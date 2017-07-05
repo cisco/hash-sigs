@@ -1,0 +1,183 @@
+/*
+ * This tests out the threading capability
+ */
+
+#include "test_hss.h"
+#include "hss.h"
+#include "hss_thread.h"
+#include <stdio.h>
+#include <stdarg.h>
+#include <string.h>
+
+/* This will do an initial check if threading is enabled */
+/* If it's not, there's no point in these tests */
+bool check_threading_on(bool fast_flag) {
+    struct thread_collection *col = hss_thread_init(2);
+    hss_thread_done(col);
+
+    if (!col) {
+        printf( "  Threading not enabled - test skipped\n" );
+        return false;
+    }
+    return true;
+}
+
+static int rand_val = 0x01;
+static bool rand_1( void *output, size_t len) {
+    unsigned char *p = output;
+    while (len--) *p++ = rand_val + len;
+    return true;
+}
+
+#define MAX_THREAD 16
+
+bool run_test(unsigned L, const param_set_t *lm, const param_set_t *ots) {
+    struct hss_extra_info info[MAX_THREAD];
+    int i;
+
+    for (i=0; i<MAX_THREAD; i++) {
+        hss_init_extra_info( &info[i] );
+        hss_extra_info_set_threads( &info[i], i+1 );
+    }
+
+    rand_val++;
+
+    size_t private_len = hss_get_private_key_len(L, lm, ots);
+    size_t public_len = hss_get_public_key_len(L, lm, ots);
+    size_t sig_len = hss_get_signature_len(L, lm, ots);
+    size_t aux_len = 1000;
+    if (private_len == 0 || public_len == 0 || sig_len == 0) {
+        printf( "  Bad parm set\n" );
+        return false;
+    }
+
+    /* Test out the key creation logic with this parm set */
+    unsigned char private[ private_len ];
+    unsigned char public[ public_len ];
+    unsigned char aux[ aux_len ];
+    for (i=0; i<MAX_THREAD; i++) {
+        unsigned char private_temp[ private_len ];
+        unsigned char public_temp[ public_len ];
+        unsigned char aux_temp[ aux_len ];
+        memset( aux_temp, 0, sizeof aux_temp );
+        if (!hss_generate_private_key( rand_1,
+                    L, lm, ots,
+                    0, private_temp,
+                    public_temp, sizeof public_temp,
+                    aux_temp, sizeof aux_temp,
+                    &info[i] )) {
+            printf( "  Private key gen failed\n" );
+            return false;
+        }
+        if (i == 0) {
+            memcpy( private, private_temp, private_len );
+            memcpy( public, public_temp, public_len );
+            memcpy( aux, aux_temp, aux_len );
+        } else {
+            if (0 != memcmp( private, private_temp, private_len )) {
+                printf( "  Private key mismatch\n" );
+                return false;
+            }
+            if (0 != memcmp( public, public_temp, public_len )) {
+                printf( "  Public key mismatch\n" );
+                return false;
+            }
+            if (0 != memcmp( aux, aux_temp, aux_len )) {
+                printf( "  Aux mismatch\n" );
+                return false;
+            }
+        }
+    }
+
+    /* Now, test out the key loading logic */
+    bool success_flag = false;
+    struct hss_working_key *w[MAX_THREAD] = { 0 };
+    for (i=0; i<MAX_THREAD; i++) {
+        w[i] = hss_load_private_key( 0, private,
+                 0, aux, aux_len, &info[i] );
+        if (!w[i]) {
+            printf( "  Load private key failed\n" );
+            goto failed;
+        }
+    }
+
+    int j;
+    const unsigned char test_message[] = "Hello spots fans";
+    for (j=0; j<25; j++) {
+        unsigned char private_next[ private_len ];
+        unsigned char sig[ sig_len ];
+
+        /* Now, test out generating a signature */
+        for (i=0; i<MAX_THREAD; i++) {
+            unsigned char private_temp[ private_len ];
+            unsigned char sig_temp[ sig_len ];
+            memcpy( private_temp, private, private_len );
+            if (!hss_generate_signature( w[i],
+                     0, private_temp,
+                     test_message, sizeof test_message, 
+                     sig_temp, sizeof sig_temp,
+                     &info[i] )) {
+                printf( "  Signature gen failed\n" );
+                goto failed;
+            }
+
+            if (i == 0) {
+                memcpy( private_next, private_temp, private_len );
+                memcpy( sig, sig_temp, sig_len );
+            } else {
+                if (0 != memcmp( private_next, private_temp, private_len )) {
+                    printf( "  Private key update mismatch\n" );
+                    goto failed;
+                }
+                if (0 != memcmp( sig, sig_temp, sig_len )) {
+                    printf( "  Signature mismatch\n" );
+                    goto failed;
+                }
+            }
+        }
+        memcpy( private, private_next, private_len );
+
+        /* Check the validation */
+        for (i=0; i<MAX_THREAD; i++) {
+            if (!hss_validate_signature( public, 
+                         test_message, sizeof test_message,
+                         sig, sig_len, &info[i] )) {
+                printf( "  Signature validate\n" );
+                goto failed;
+            }
+        }
+    }
+
+/* MORE HERE */
+    success_flag = true;
+failed:
+    for (i=0; i<MAX_THREAD; i++) {
+        hss_free_working_key( w[i] );
+    }
+    return success_flag;
+}
+
+bool test_thread(bool fast_flag, bool quiet_flag) {
+    {
+        param_set_t lm[1] = { LMS_SHA256_N32_H5 };
+        param_set_t ots[1] = { LMOTS_SHA256_N32_W8 };
+        if (!run_test(1, lm, ots)) return false;
+    }
+    {
+        param_set_t lm[1] = { LMS_SHA256_N32_H10 };
+        param_set_t ots[1] = { LMOTS_SHA256_N32_W4 };
+        if (!run_test(1, lm, ots)) return false;
+    }
+    {
+        param_set_t lm[2] = { LMS_SHA256_N32_H10, LMS_SHA256_N32_H5 };
+        param_set_t ots[2] = { LMOTS_SHA256_N32_W2, LMOTS_SHA256_N32_W4 };
+        if (!run_test(2, lm, ots)) return false;
+    }
+    if (!fast_flag) { /* This test exceeds our 15 second fast threshold */
+        param_set_t lm[2] = { LMS_SHA256_N32_H15, LMS_SHA256_N32_H15 };
+        param_set_t ots[2] = { LMOTS_SHA256_N32_W2, LMOTS_SHA256_N32_W2 };
+        if (!run_test(2, lm, ots)) return false;
+    }
+/* MORE HERE */
+    return true;
+}
