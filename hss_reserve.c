@@ -12,16 +12,71 @@ void hss_set_reserve_count(struct hss_working_key *w, sequence_t count) {
 }
 
 /*
- * This is called when we generate a signature; it checks if we need
- * to write out a new private key (and advance the reservation)
+ * Set the autoreserve count
  */
-bool hss_advance_count(struct hss_working_key *w, sequence_t new_count,
+bool hss_set_autoreserve(struct hss_working_key *w,
+            unsigned sigs_to_autoreserve, struct hss_extra_info *info) {
+    if (!w) {
+        if (info) info->error_code = hss_error_got_null;
+        return false;
+    }
+
+    /* Note: we do not check if the working key is in a usable state */
+    /* There are a couple of odd-ball scenarios (e.g. when they've */
+    /* manually allocated the key, but haven't loaded it yet) that we */
+    /* don't have a good reason to disallow */
+
+    w->autoreserve = sigs_to_autoreserve;
+    return true;
+}
+
+/*
+ * This is called when we generate a signature; it checks if we need
+ * to write out a new private key (and advance the reservation); if it
+ * decides it needs to write out a new private key, it also decides how
+ * far it needs to advance it
+ */
+bool hss_advance_count(struct hss_working_key *w, sequence_t cur_count,
         bool (*update_private_key)(unsigned char *private_key,
                 size_t len_private_key, void *context),
-        void *context) {
+        void *context,
+        struct hss_extra_info *info, bool *trash_private_key) {
+
+    if (cur_count == w->max_count) {
+        /* We hit the end of the root; this will be the last signature */
+        /* this private key can do */
+        w->status = hss_error_private_key_expired; /* Fail if they try to */
+                                                   /* sign any more */
+        info->last_signature = true;
+            /* Make sure we zeroize the private key */
+        *trash_private_key = true;  /* We can't trash our copy of the */
+                /* private key until after we've generated the signature */
+                /* We can trash the copy in secure storage, though */
+        if (update_private_key) {
+            unsigned char private_key[PRIVATE_KEY_LEN];
+            memset( private_key, PARM_SET_END, PRIVATE_KEY_LEN );
+            if (!update_private_key(private_key, PRIVATE_KEY_LEN, context)) {
+                info->error_code = hss_error_private_key_write_failed;
+                return false;
+            }
+        } else {
+            memset( context, PARM_SET_END, PRIVATE_KEY_LEN );
+        }
+        return true;
+    }
+    sequence_t new_count = cur_count + 1;
 
     if (new_count > w->reserve_count) {
         /* We need to advance the reservation */
+
+        /* Check if we have enough space to do the entire autoreservation */
+        if (w->max_count - new_count > w->autoreserve) {
+            new_count += w->autoreserve;
+        } else {
+            /* If we don't have enough space, reserve what we can */
+            new_count = w->max_count;
+        }
+
         put_bigendian( w->private_key + PRIVATE_KEY_INDEX, new_count,
                        PRIVATE_KEY_INDEX_LEN );
         if (update_private_key) {
@@ -29,8 +84,9 @@ bool hss_advance_count(struct hss_working_key *w, sequence_t new_count,
                                    context)) {
                  /* Oops, we couldn't write the private key; undo the */
                  /* reservation advance (and return an error) */
-                 put_bigendian( w->private_key + PRIVATE_KEY_INDEX, w->reserve_count,
-                       PRIVATE_KEY_INDEX_LEN );
+                 info->error_code = hss_error_private_key_write_failed;
+                 put_bigendian( w->private_key + PRIVATE_KEY_INDEX,
+                       w->reserve_count, PRIVATE_KEY_INDEX_LEN );
                 return false;
             }
         } else {
@@ -96,7 +152,8 @@ bool hss_reserve_signature(
         struct merkle_level *tree = w->tree[i];
             /* -1 because the current_index counts the signatures to the */
             /* current next level */
-        current_count = (current_count << tree->level) + tree->current_index - 1;
+        current_count = (current_count << tree->level) +
+                                                  tree->current_index - 1;
     }
     current_count += 1;   /* The bottom-most tree isn't advanced */
 
@@ -120,10 +177,11 @@ bool hss_reserve_signature(
                    PRIVATE_KEY_INDEX_LEN );
     /* Update the copy in NV storage */
     if (update_private_key) {
-        if (!update_private_key(w->private_key, PRIVATE_KEY_INDEX_LEN, context)) {
+        if (!update_private_key(w->private_key, PRIVATE_KEY_INDEX_LEN,
+                                                                  context)) {
              /* Oops, couldn't update it */
-             put_bigendian( w->private_key + PRIVATE_KEY_INDEX, w->reserve_count,
-                   PRIVATE_KEY_INDEX_LEN );
+             put_bigendian( w->private_key + PRIVATE_KEY_INDEX,
+                        w->reserve_count, PRIVATE_KEY_INDEX_LEN );
              info->error_code = hss_error_private_key_write_failed;
              return false;
         }

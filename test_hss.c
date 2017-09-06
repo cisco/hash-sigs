@@ -28,6 +28,7 @@ static struct {
     { "verify", test_verify, "signature verification test", true },
     { "verifyinc", test_verify_inc, "incremental verification test",
         false },
+    { "reserve", test_reserve, "reservation test", false },
     { "thread", test_thread, "threading logic test", false,
         check_threading_on },
     { "h25", test_h25, "H=25 test", true, check_h25 },

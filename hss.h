@@ -276,6 +276,20 @@ bool hss_reserve_signature(
     struct hss_extra_info *info);
 
 /*
+ * This will set the autoreserve, so that when the signing process runs out,
+ * it will automatically reserve N more signatures (in addition to the one
+ * that is being used for the current signature)
+ *
+ * This can be useful if the update_private_key function is expensive,
+ * setting sigs_to_autoreserve=99 means will actually update the private
+ * key once every 100 signatures
+ */
+bool hss_set_autoreserve(
+    struct hss_working_key *w,
+    unsigned sigs_to_autoreserve,
+    struct hss_extra_info *info);
+
+/*
  * This returns the required lengths for the various objects we export
  *
  * This is the length of the private key (which is written to secure storage)
