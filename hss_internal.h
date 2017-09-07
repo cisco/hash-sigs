@@ -35,13 +35,16 @@ struct merkle_level;
 struct hss_working_key {
     unsigned levels;
     enum hss_error_code status;   /* What is the status of this key */
-                                  /* hss_error_none if everything looks gok */
+                                  /* hss_error_none if everything looks ok */
                                   /* Otherwise, the error code we report if */
                                   /* we try to use this key to sign */
     sequence_t reserve_count;     /* The value written to the private key */
                                   /* Will be higher than the 'current count' */
                                   /* if some signaures are 'reserved' */
     sequence_t max_count;         /* The maximum count we can ever have */
+    unsigned autoreserve;         /* How many signatures to attempt to */
+                                  /* reserve if the signing process hits */
+                                  /* the end of the current reservation */
 
     size_t signature_len;         /* The length of the HSS signature */
 

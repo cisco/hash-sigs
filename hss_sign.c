@@ -494,34 +494,11 @@ bool hss_generate_signature(
     current_count += 1;   /* Bottom most tree isn't already advanced */
 
     /* Ok, try to advance the private key */
-    if (current_count == w->max_count) {
-        /* We hit the end of the root; this will be the last signature */
-        /* this private key can do */
-        w->status = hss_error_private_key_expired; /* Fail if they try to */
-                                                   /* sign any more */
-        info->last_signature = true;
-            /* Trash the private key */
-        trash_private_key = true;  /* We can't trash our copy of the */
-                /* private key until after we've generated the signature */
-                /* We can trash the copy in secure storage, though */
-        if (update_private_key) {
-            unsigned char private_key[PRIVATE_KEY_LEN];
-            memset( private_key, PARM_SET_END, PRIVATE_KEY_LEN );
-            if (!update_private_key(private_key, PRIVATE_KEY_LEN, context)) {
-                info->error_code = hss_error_private_key_write_failed;
-                goto failed;
-            }
-        } else {
-            memset( context, PARM_SET_END, PRIVATE_KEY_LEN );
-        }
-    } else {
-        /* We haven't hit the max; increment normally */
-        if (!hss_advance_count(w, current_count+1,
-                               update_private_key, context)) {
-            /* The write to the private key failed */
-            info->error_code = hss_error_private_key_write_failed;
-            goto failed;
-        }
+    if (!hss_advance_count(w, current_count,
+                               update_private_key, context, info,
+                               &trash_private_key)) {
+        /* hss_advance_count fills in the error reason */
+        goto failed;
     }
 
        /* Ok, now actually generate the signature */

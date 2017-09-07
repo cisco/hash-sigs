@@ -180,6 +180,7 @@ signed long initial_mem_target = mem_target; /* DEBUG HACK */
     w->levels = levels;
     w->status = hss_error_key_uninitialized; /* Not usable until we see a */
                                              /* private key */
+    w->autoreserve = 0;
 
     /* Initialize all the allocated data structures to NULL */
     /* We do this up front so that if we hit an error in the middle, we can */
