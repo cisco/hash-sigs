@@ -51,7 +51,7 @@ void validate_internal_sig(const void *data,
  * signature_len - the length of the signature
  *
  * This returns true if everything checks out and the signature verifies 
- * false on error (whether the error is because thee signature didn't verify,
+ * false on error (whether the error is because the signature didn't verify,
  * or we hit some sort of error on the way)
  */
 bool hss_validate_signature(
@@ -62,7 +62,6 @@ bool hss_validate_signature(
     struct hss_extra_info temp_info = { 0 };
     if (!info) info = &temp_info;
     unsigned i;
-
 
     /* Get the number of levels the signature claims */
     if (signature_len < 4) {
@@ -77,12 +76,16 @@ bool hss_validate_signature(
         info->error_code = hss_error_bad_signature;
         return false;
     }
+
+    /* Compare that to what the public key says */
     uint_fast32_t pub_levels = get_bigendian( public_key, 4 );
     if (levels != pub_levels) {
         /* Signature and public key don't agree */
         info->error_code = hss_error_bad_signature;
         return false;
     }
+    /* We'll use the LMS public key embedded in the HSS public key as the */
+    /* key to use to validate the top level signature */
     public_key += 4;
 
     struct thread_collection *col = hss_thread_init(info->num_threads);
@@ -90,10 +93,22 @@ bool hss_validate_signature(
     struct verify_detail detail;
     detail.got_error = &got_error;
 
-    /* Scan through the signature, kicking off the tasks to validate it */
-    /* as we go */
+    /* Parse through the signature, kicking off the tasks to validate */
+    /* individual LMS signatures within it as we go */
     for (i=0; i<levels-1; i++) { 
-        /* The next thing is the signature of this public key */
+        /*
+         * At this point of time, the current position in the signature
+         * looks like (or, rather, is *supposed to look like*) this:
+         *     <Signature A><Public Key B><Other stuff>
+         * where:
+         * - Signature A is the LMS signature of Public Key B
+         * - Public Key B is the message we're verifying (and will be
+         *   interpreted as a public key in the next iteration)
+         * public_key points to Public Key A, which is the public key that
+         * we use to verify Signature A
+         */
+
+        /* Get the length of Signature A */
         param_set_t lm_type = get_bigendian( public_key, 4 );
         param_set_t lm_ots_type = get_bigendian( public_key+4, 4 );
         unsigned l_siglen = lm_get_signature_len(lm_type, lm_ots_type);
@@ -101,46 +116,71 @@ bool hss_validate_signature(
             info->error_code = hss_error_bad_signature;
              goto failed;
         }
+
+        /* Retain a pointer to Signature A, and advance the current */
+        /* pointer to Public Key B */
         const unsigned char *l_sig = signature;
         signature += l_siglen; signature_len -= l_siglen;
 
-        /* The next thing is the next level public key (which we need */
-        /* to validate) */
+        /* The next thing is the next level public key (Public Key B) */
+        /* which we need to validate) */
         if (signature_len < 4) {
             info->error_code = hss_error_bad_signature;
             goto failed;
         }
+        /*
+         * Get how long Public Key B would be, assuming it is a valid
+         * public key.  If it's not a valid public key (that is, if
+         * someone other than the valid signer modified it), then
+         * Signature A will not validate, and so we'll catch that
+         */
         lm_type = get_bigendian( signature, 4 );
         unsigned l_pubkeylen = lm_get_public_key_len(lm_type);
         if (l_pubkeylen == 0 || l_pubkeylen > signature_len) {
             info->error_code = hss_error_bad_signature;
             goto failed;
         }
+
+        /* Retain a pointer to Public Key B, and advance the current */
+        /* pointer past it (to the data the next iteration cares about) */
         const unsigned char *l_pubkey = signature;
         signature += l_pubkeylen; signature_len -= l_pubkeylen;
 
-        /* Validate the signature of this level's public key */
-        detail.public_key = public_key;
-        detail.message = l_pubkey;
+        /* Now, schedule the validation of Signature A */
+        detail.public_key = public_key;    /* Public key A */
+        detail.message = l_pubkey;         /* Public key B, that is, */
+                                           /* the message to validate */
         detail.message_len = l_pubkeylen;
-        detail.signature = l_sig;
+        detail.signature = l_sig;          /* Signature A */
         detail.signature_len = l_siglen;
         hss_thread_issue_work( col, validate_internal_sig,
                                &detail, sizeof detail );
 
         /* We validated this level's public key (or, at least, scheduled */
-        /* it, if it turns out not to validate, we'll catch it below), use */
-        /* it to validate the next level */
+        /* it, if it turns out not to validate, we'll catch it below) */
+        /* Use the current Public Key B as the next level's Public Key A */
         public_key = l_pubkey;
     }
 
-    /* Ok, we're at the bottom level, issue the final verification */
-    detail.public_key = public_key;
-    detail.message = message;
-    detail.message_len = message_len;
-    detail.signature = signature;
+    /*
+     * We're at the bottom level; now, the current position in the signature
+     * looks like (or, rather, is *supposed to look like*) this:
+     *     <Signature A>
+     * where:
+     * - Signature A is the bottom signature, which signs the actual
+     *   message
+     * public_key points to the bottom level public key, which is used to
+     * validate the signature
+     *
+     * Just go ahead and schedule the validation
+     */
+    detail.public_key = public_key;    /* Public key to use */
+    detail.message = message;          /* The user's message that needs */
+    detail.message_len = message_len;  /* validation */
+    detail.signature = signature;      /* Bottom level LMS signature */
     detail.signature_len = signature_len;
-    hss_thread_issue_work( col, validate_internal_sig, &detail, sizeof detail );
+    hss_thread_issue_work( col, validate_internal_sig,
+                           &detail, sizeof detail );
 
     /* Wait for all the threads to complete */
     hss_thread_done(col);
