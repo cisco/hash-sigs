@@ -1,5 +1,5 @@
 This code attempts to be a usable implementation of of the LMS Hash Based
-Signature Scheme from draft-mcgrew-hash-sigs-07.
+Signature Scheme from draft-mcgrew-hash-sigs-08.
 
 This is a signature scheme (that is, someone with the private key can sign
 messages, someone with the public key can verify sigantures, but cannot
@@ -201,8 +201,8 @@ We also have an optional third section to the private key:
      - For a level 20 top level tree, 10916 bytes of aux data allows us to
        regen the top level tree in circa a second.  That means that, for a
        20/10 level tree, generating the private key is expensive (3 minutes
-       on my test machine), but restarts after that can be done in a second
-       or two.
+       on my test machine, a 3.3GHz Xeon), but restarts after that can be done
+       in a second or two.
      - We also authenticate the auxiliary data; that means that an adversary
        who can corrupt the auxiliary data can increase the time it takes for
        us to load the working key; however they don't get any other advantage.
@@ -272,7 +272,7 @@ real applications really ought not do.
 General notes:
 
 - Advice about parameter sets: while this supports all the HSS parameter sets
-  currently allowed in draft-mcgrew-hash-sigs-07, some work better than others
+  currently allowed in draft-mcgrew-hash-sigs-08, some work better than others
   The general recommendation is to use a few large trees (that is, with lots
   of levels), rather than using a number of levels of smaller trees; this
   package tries to make large trees not that costly (and reducing the number
@@ -280,17 +280,17 @@ General notes:
   reasonable amount of auxiliary data available (and ideally, multithreading),
   then making the top level tree H=20 (or even H=25) is doable; the main cost
   is the time to do the initial key generation (which in most cases is a rare
-  event).  On my test machine, I can generate a key with a H=20 tree on top
-  (with W=8) in 3 minutes (multithreaded); loading that key into memory (with
-  10k of aux data, with a single H=10 tree below it) takes 1-2 seconds.  An
-  H=25 tree on top took 1.5 hours; loading that key into memory (with 1Meg of
-  aux data) took a second.  Increasing the lower tree to H=15 makes loading
-  take 6 seconds (without affecting the key generation time).  Those parameter
-  sets give reasonable speed, with 3.3-3.7k signatures, and allow 1 billion to
-  1 trillion signatures per private key (which I expect should be sufficient
-  for most uses; at 1000 signatures per second, that's enough to last you
-  either 10 days (top H=20, bottom H=14), a year, or 3 decades (top H=25,
-  bottom H=15).
+  event).  On my test machine (a 3.3GHz Xeon), I can generate a key with a
+  H=20 tree on top (with W=8) in 3 minutes (multithreaded); loading that key
+  into memory (with 10k of aux data, with a single H=10 tree below it) takes
+  1-2 seconds.  An H=25 tree on top took 1.5 hours; loading that key into
+  memory (with 1Meg of aux data) took a second.  Increasing the lower tree to
+  H=15 makes loading take 6 seconds (without affecting the key generation
+  time).  Those parameter sets give reasonable speed, with 3.3-3.7k
+  signatures, and allow 1 billion to 1 trillion signatures per private key
+  (which I expect should be sufficient for most uses; at 1000 signatures per
+  second, that's enough to last you between 10 days (top H=20, bottom H=10)
+  to 3 decades (top H=25, bottom H=15).
       Here's a table that goes through a list of various parameter sets.
   They all have W=8 (which minimizes signature sizes, while increasing time),
   and were measured on my test platform (with threading enabled; times would
@@ -365,22 +365,6 @@ General notes:
   structure, we may be getting close; any new parameter where most 
   applications are happy with a reasonable default can be placed into the
   extra_info structure); I don't want to lock us in to what we have right now.
-
-- Note that there is a MUST statement in the draft that this implementation
-  does not comply to:
-
-      These key pairs, and their identifiers, MUST be generated
-      independently.  All of the information of the leaf level L-1,
-      including the private key, MUST NOT be stored in nonvolatile memory.
-
-  Actually, we generate everything (including data from level L-1) from the
-  secret seed, which is stored in secure nonvolatile storage as a part of the
-  private key.  We do this because our model is that we might restart at any
-  time, and on a restart, we reload the private key, which recreates the tree
-  structure from scratch).  If we generated the bottom level randomly, that
-  would mean the next level OTS signature would sign two different messages.
-  Now, we could autoadvance to the next L-1 tree, however that would use up
-  signatures for no good reason.
 
 - This package will allow at most 18446744073709551615 signatures per private
   key (that's 2**64-1), even if the parameter set would allow more.  If you
