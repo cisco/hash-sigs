@@ -1,4 +1,5 @@
 #if !defined( LM_OTS_COMMON_H_ )
+#define LM_OTS_COMMON_H_
 
 #include <stddef.h>
 #include "common_defs.h"

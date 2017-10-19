@@ -1,3 +1,6 @@
+#if !defined( HSS_DERIVE_H_ )
+#define HSS_DERIVE_H_
+
 #include "common_defs.h"
 
 /*
@@ -78,4 +81,4 @@ void hss_seed_derive( unsigned char *seed, struct seed_derive *derive,
 /* That structure contains keying data, this makes sure those are cleaned */
 void hss_seed_derive_done( struct seed_derive *derive );
 
-
+#endif /* HSS_DERIVE_H_ */

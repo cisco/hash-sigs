@@ -1,5 +1,5 @@
 #if !defined( HSS_INTERNAL_H_ )
-#define HSS_INTERNAL_H
+#define HSS_INTERNAL_H_
 
 #include <stdlib.h>
 #include "common_defs.h"
@@ -80,7 +80,6 @@ struct hss_working_key {
 /* tall trees */
 #endif 
 
-struct subtree *subtree;
 struct merkle_level {
     unsigned level;               /* Total number of levels */
     unsigned h, hash_size;        /* Hash function, width */
