@@ -1,3 +1,6 @@
+#if !defined( LM_OTS_H_ )
+#define LM_OTS_H_
+
 #include "common_defs.h"
 #include <stddef.h>
 
@@ -57,3 +60,5 @@ bool lm_ots_generate_signature(
 
 /* The include file for the common access routines */
 #include "lm_ots_common.h"
+
+#endif /* LM_OTS_H_ */

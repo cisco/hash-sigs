@@ -1,3 +1,6 @@
+#if !defined( LM_OTS_VERIFY_H_ )
+#define LM_OTS_VERIFY_H_
+
 #include <stddef.h>
 #include "common_defs.h"
 
@@ -16,3 +19,5 @@ bool lm_ots_validate_signature_compute(
     const void *message, size_t message_len, bool prehashed,
     const unsigned char *signature, size_t signature_len,
     param_set_t expected_parameter_set);
+
+#endif /* LM_OTS_VERIFY_H_ */

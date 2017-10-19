@@ -1,3 +1,6 @@
+#if !defined( HSS_VERIFY_H_ )
+#define HSS_VERIFY_H_
+
 #include <stdbool.h>
 
 struct hss_extra_info;
@@ -16,3 +19,5 @@ bool hss_validate_signature(
     const void *message, size_t message_len,
     const unsigned char *signature, size_t signature_len,
     struct hss_extra_info *info);
+
+#endif /* HSS_VERIFY_H_ */

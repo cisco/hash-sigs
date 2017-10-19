@@ -489,7 +489,7 @@ bool hss_generate_signature(
         struct merkle_level *tree = w->tree[i];
         current_count <<= tree->level;
             /* We subtract 1 because the nonbottom trees are already advanced */
-        current_count += tree->current_index - 1;
+        current_count += (sequence_t)tree->current_index - 1;
     }
     current_count += 1;   /* Bottom most tree isn't already advanced */
 

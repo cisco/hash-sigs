@@ -1,3 +1,5 @@
+#if !defined( HSS_THREAD_H_ )
+#define HSS_THREAD_H_
 /*
  * This is our internal abstraction of multithreading; this allows the
  * "application" (in this case, the HSS code) to issue multiple requests that
@@ -129,3 +131,5 @@ void hss_thread_after_write(struct thread_collection *collect);
  * The value passed is the value we'll pass to hss_thread_init
  */
 unsigned hss_thread_num_tracks(int num_threads);
+
+#endif /* HSS_THREAD_H_ */
