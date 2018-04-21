@@ -18,7 +18,7 @@ static struct {
                                        /* will take a while in -full mode */
     bool (*test_enabled)(bool);        /* Check if this tests is enabled */
 } test_list[] = {
-    { "testvector", test_testvector, "test vector from the draft", false },
+    { "testvector", test_testvector, "test vectors from the draft", false },
     { "keygen", test_keygen, "key generation function test", false },
     { "load", test_load, "key load test", false },
     { "sign", test_sign, "signature test", false },
