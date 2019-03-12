@@ -9,6 +9,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#define MAX_HASH   32 /* Length of the largest hash we support */
+
 /* The I (Merkle tree identifier) value is 16 bytes long */
 #define I_LEN               16
 
