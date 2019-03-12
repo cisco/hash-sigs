@@ -10,6 +10,7 @@
 size_t hss_get_public_key_len(unsigned levels,
                    const param_set_t *lm_type,
                    const param_set_t *lm_ots_type);
+#define HSS_MAX_PUBLIC_KEY_LEN (4 + 8 + ((I_LEN+3) & ~3) + MAX_HASH)
 
 /*
  * This returns the length of the signature for the given parameter set
