@@ -108,18 +108,18 @@ bool test_verify(bool fast_flag, bool quiet_flag) {
         for (   ; j<8; j++) { lm_array[j] = 0; lm_ots_array[j] = 0; }
 
         size_t len_private_key = hss_get_private_key_len(d, lm_array, lm_ots_array );
-        if (len_private_key == 0) { 
+        if (len_private_key == 0 || len_private_key > HSS_MAX_PRIVATE_KEY_LEN) { 
             printf( "    Len private key failed\n" );
             return false;
         }
-        unsigned char private_key[len_private_key];
+        unsigned char private_key[HSS_MAX_PRIVATE_KEY_LEN];
 
         unsigned len_public_key = hss_get_public_key_len(d, lm_array, lm_ots_array );
-        if (len_public_key == 0) { 
+        if (len_public_key == 0 || len_public_key > HSS_MAX_PUBLIC_KEY_LEN) { 
             printf( "    Len public key failed\n" );
             return false;
         }
-        unsigned char public_key[len_public_key];
+        unsigned char public_key[HSS_MAX_PUBLIC_KEY_LEN];
 
         size_t len_signature = hss_get_signature_len(d, lm_array, lm_ots_array );
         if (len_signature == 0) { 
@@ -160,10 +160,15 @@ static bool do_verify( unsigned char *private_key, unsigned char *public_key,
                        unsigned char *aux_data, size_t len_aux_data,
                        size_t signature_len, bool fast_flag ) { 
     bool success = false;
-    unsigned char signature[signature_len];
+    struct hss_working_key *w = 0;
+    unsigned char *signature = malloc(signature_len);
+    if (!signature) {
+        printf( "    *** malloc failed\n" );
+        goto failed;
+    }
 
     /* Step 1: load the private key into memory */
-    struct hss_working_key *w = hss_load_private_key(
+    w = hss_load_private_key(
                            NULL, private_key,
                            0,     /* Minimal memory */
                            aux_data, len_aux_data, 0 );
@@ -240,5 +245,6 @@ static bool do_verify( unsigned char *private_key, unsigned char *public_key,
     success = true;
 failed:
     hss_free_working_key(w);
+    free(signature);
     return success;
 }
