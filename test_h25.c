@@ -38,13 +38,18 @@ bool test_h25(bool fast_flag, bool quiet_flag) {
     int pubkey_size = hss_get_public_key_len( d, lm_type, ots_type );
     int sig_size = hss_get_signature_len( d, lm_type, ots_type );
     int privkey_size = hss_get_private_key_len( d, lm_type, ots_type );
-    if (!pubkey_size || !sig_size || !privkey_size) {
+    if (!pubkey_size || pubkey_size > HSS_MAX_PUBLIC_KEY_LEN ||
+        !sig_size ||
+        !privkey_size || privkey_size > HSS_MAX_PRIVATE_KEY_LEN) {
         printf( "Internal error: bad parm set\n" );
         return false;
     }
-    unsigned char pubkey[pubkey_size];
-    unsigned char sig[sig_size];
-    unsigned char privkey[privkey_size];
+    unsigned char pubkey[HSS_MAX_PUBLIC_KEY_LEN];
+    unsigned char *sig = malloc(sig_size);
+    if (!sig) {
+        return false;
+    }
+    unsigned char privkey[HSS_MAX_PRIVATE_KEY_LEN];
 
     unsigned char aux[ 10000 ];
 
@@ -52,6 +57,7 @@ bool test_h25(bool fast_flag, bool quiet_flag) {
                                    NULL, privkey, pubkey, pubkey_size,
                                    aux, sizeof aux, 0)) {
         printf( "Pubkey gen failure\n" );
+        free(sig);
         return false;
     }
     if (!quiet_flag) {
@@ -62,6 +68,7 @@ bool test_h25(bool fast_flag, bool quiet_flag) {
                        100000, aux, sizeof aux, 0 );
     if (!w) {
         printf( "Error loading working key\n" );
+        free(sig);
         return false;
     }
     if (!quiet_flag) {
@@ -93,5 +100,6 @@ bool test_h25(bool fast_flag, bool quiet_flag) {
     }
 
     hss_free_working_key(w);
+    free(sig);
     return retval;
 }
