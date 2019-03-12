@@ -106,6 +106,7 @@ bool test_stat(bool fast_flag, bool quiet_flag) {
     }
     long bin_count = 0;
 
+    unsigned char *sig = 0;
     int d;
     for (d=1; d<=MAX_D; d++) {
         int k;
@@ -120,7 +121,9 @@ bool test_stat(bool fast_flag, bool quiet_flag) {
         size_t pub_key_len =  hss_get_public_key_len(d, lm_type, lm_ots_type);
         size_t sig_len = hss_get_signature_len(d, lm_type, lm_ots_type);
         size_t priv_len = hss_get_private_key_len(d, lm_type, lm_ots_type);
-        if (!pub_key_len || !sig_len || !priv_len) {
+        if (!pub_key_len || pub_key_len > HSS_MAX_PUBLIC_KEY_LEN ||
+            !sig_len ||
+            !priv_len || priv_len > HSS_MAX_PRIVATE_KEY_LEN) {
             printf( "    Bad parm set\n" );
             goto failed;
         }
@@ -128,8 +131,8 @@ bool test_stat(bool fast_flag, bool quiet_flag) {
         /* Try it for 3 distinct keys */
         for (k=0; k<3; k++) {
             unsigned char aux_data[200];
-            unsigned char pub_key[pub_key_len];
-            unsigned char private_key[priv_len];
+            unsigned char pub_key[HSS_MAX_PUBLIC_KEY_LEN];
+            unsigned char private_key[HSS_MAX_PRIVATE_KEY_LEN];
             if (!hss_generate_private_key( generate_random,
                            d, lm_type, lm_ots_type,
                            NULL, private_key,
@@ -146,10 +149,11 @@ bool test_stat(bool fast_flag, bool quiet_flag) {
                 goto failed;
             }
 
+            sig = malloc(sig_len); if (!sig) goto failed;
+            
             for (i=0; i<HASH_PER_MERKLE_TREE; i++) {
                 static char test_message[3] = "abc";
                 /* Generate a signature */
-                unsigned char sig[sig_len];
                 if (!hss_generate_signature(w, NULL, private_key,
                                             test_message, sizeof test_message,
                                             sig, sig_len, 0)) {
@@ -270,6 +274,6 @@ if (sig_offset != sig_len) { printf( "Oops: we got something wrong here: %d %d\n
     }
 
 failed:
-    free(t);
+    free(t); free(sig);
     return success;
 }

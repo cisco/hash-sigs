@@ -27,14 +27,14 @@ static bool run_test(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
                      unsigned num_iter, bool at_end) {
 
     size_t len_private_key = hss_get_private_key_len(d, lm_array, lm_ots_array );
-    if (len_private_key == 0) { 
+    if (len_private_key == 0 || len_private_key > HSS_MAX_PRIVATE_KEY_LEN) { 
         printf( "    Len private key failed\n" );
         return false;
     }
-    unsigned char private_key[len_private_key];
+    unsigned char private_key[HSS_MAX_PRIVATE_KEY_LEN];
 
     unsigned len_public_key = hss_get_public_key_len(d, lm_array, lm_ots_array );
-    if (len_public_key == 0) { 
+    if (len_public_key == 0 || len_public_key > HSS_MAX_PUBLIC_KEY_LEN) { 
         printf( "    Len public key failed\n" );
         return false;
     }
@@ -45,7 +45,7 @@ static bool run_test(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
         return false;
     }
 
-    unsigned char public_key[len_public_key];
+    unsigned char public_key[HSS_MAX_PUBLIC_KEY_LEN];
 
     unsigned char aux_data[1000];
 
@@ -77,7 +77,12 @@ static bool run_test(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
     }
 
     unsigned i;
-    unsigned char sig_1[len_sig], sig_2[len_sig];
+    unsigned char *sig_1 = malloc(len_sig);
+    unsigned char *sig_2 = malloc(len_sig);
+    if (!sig_1 || !sig_2) {
+        free(sig_1); free(sig_2);
+        return false;
+    }
     for (i = 0; i<num_iter; i++) {
 
         /* Generate a signature using the standard API */
@@ -88,6 +93,7 @@ static bool run_test(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
             printf( "    *** failed normal signature\n" );
             hss_free_working_key(w);
             hss_free_working_key(w2);
+            free(sig_1); free(sig_2);
             return false;
         }
 
@@ -100,6 +106,7 @@ static bool run_test(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
             printf( "    *** failed signature init\n" );
             hss_free_working_key(w);
             hss_free_working_key(w2);
+            free(sig_1); free(sig_2);
             return false;
         }
 
@@ -110,6 +117,7 @@ static bool run_test(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
             printf( "    *** at-end flag not correct\n" );
             hss_free_working_key(w);
             hss_free_working_key(w2);
+            free(sig_1); free(sig_2);
             return false;
         }
 
@@ -119,6 +127,7 @@ static bool run_test(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
             printf( "    *** failed signature update\n" );
             hss_free_working_key(w);
             hss_free_working_key(w2);
+            free(sig_1); free(sig_2);
             return false;
         }
 
@@ -126,6 +135,7 @@ static bool run_test(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
             printf( "    *** failed signature finalize\n" );
             hss_free_working_key(w);
             hss_free_working_key(w2);
+            free(sig_1); free(sig_2);
             return false;
         }
 
@@ -134,6 +144,7 @@ static bool run_test(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
             printf( "   *** Generated different signatures\n" );
             hss_free_working_key(w);
             hss_free_working_key(w2);
+            free(sig_1); free(sig_2);
             return false;
         }
     }
@@ -148,18 +159,21 @@ static bool run_test(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
             printf( "    *** signinit succeeded when it should have failed\n" );
             hss_free_working_key(w);
             hss_free_working_key(w2);
+            free(sig_1); free(sig_2);
             return false;
         }
         if (hss_extra_info_test_error_code(&info) != hss_error_private_key_expired) {
             printf( "    *** signinit gave incorrect error code\n" );
             hss_free_working_key(w);
             hss_free_working_key(w2);
+            free(sig_1); free(sig_2);
             return false;
         }
     }
 
     hss_free_working_key(w);
     hss_free_working_key(w2);
+    free(sig_1); free(sig_2);
     return true;
 }
 
@@ -167,14 +181,14 @@ static bool run_test_2(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
                      unsigned num_iter) {
 
     size_t len_private_key = hss_get_private_key_len(d, lm_array, lm_ots_array );
-    if (len_private_key == 0) { 
+    if (len_private_key == 0 || len_private_key > HSS_MAX_PRIVATE_KEY_LEN) { 
         printf( "    Len private key failed\n" );
         return false;
     }
-    unsigned char private_key[len_private_key];
+    unsigned char private_key[HSS_MAX_PRIVATE_KEY_LEN];
 
     unsigned len_public_key = hss_get_public_key_len(d, lm_array, lm_ots_array );
-    if (len_public_key == 0) { 
+    if (len_public_key == 0 || len_public_key > HSS_MAX_PUBLIC_KEY_LEN) { 
         printf( "    Len public key failed\n" );
         return false;
     }
@@ -185,7 +199,7 @@ static bool run_test_2(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
         return false;
     }
 
-    unsigned char public_key[len_public_key];
+    unsigned char public_key[HSS_MAX_PUBLIC_KEY_LEN];
 
     unsigned char aux_data[1000];
 
@@ -218,11 +232,12 @@ static bool run_test_2(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
 
     unsigned char *sig = malloc( len_sig * num_iter );
     struct hss_sign_inc *ctx = malloc(sizeof(struct hss_sign_inc) * num_iter);
-    if (!sig || !ctx) {
+    unsigned char *sig_2 = malloc(len_sig);
+    if (!sig || !ctx || !sig_2) {
         printf( "    *** memory allocation failure\n" );
         hss_free_working_key(w);
         hss_free_working_key(w2);
-        free(sig); free(ctx);
+        free(sig); free(ctx); free(sig_2);
         return false;
     }
     unsigned i;
@@ -234,7 +249,7 @@ static bool run_test_2(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
             printf( "    *** failed signature init\n" );
             hss_free_working_key(w);
             hss_free_working_key(w2);
-            free(sig); free(ctx);
+            free(sig); free(ctx); free(sig_2);
             return false;
         }
 
@@ -243,12 +258,11 @@ static bool run_test_2(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
             printf( "    *** failed signature update\n" );
             hss_free_working_key(w);
             hss_free_working_key(w2);
-            free(sig); free(ctx);
+            free(sig); free(ctx); free(sig_2);
             return false;
         }
     }
 
-    unsigned char sig_2[len_sig];
     for (i = 0; i<num_iter; i++) {
 
         /* Generate a signature using the standard API */
@@ -259,7 +273,7 @@ static bool run_test_2(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
             printf( "    *** failed normal signature\n" );
             hss_free_working_key(w);
             hss_free_working_key(w2);
-            free(sig); free(ctx);
+            free(sig); free(ctx); free(sig_2);
             return false;
         }
 
@@ -268,7 +282,7 @@ static bool run_test_2(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
             printf( "    *** failed signature update\n" );
             hss_free_working_key(w);
             hss_free_working_key(w2);
-            free(sig); free(ctx);
+            free(sig); free(ctx); free(sig_2);
             return false;
         }
 
@@ -276,7 +290,7 @@ static bool run_test_2(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
             printf( "    *** failed signature finalize\n" );
             hss_free_working_key(w);
             hss_free_working_key(w2);
-            free(sig); free(ctx);
+            free(sig); free(ctx); free(sig_2);
             return false;
         }
 
@@ -285,14 +299,14 @@ static bool run_test_2(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
             printf( "   *** Generated different signatures i = %d\n", i );
             hss_free_working_key(w);
             hss_free_working_key(w2);
-            free(sig); free(ctx);
+            free(sig); free(ctx); free(sig_2);
             return false;
         }
     }
 
     hss_free_working_key(w);
     hss_free_working_key(w2);
-    free(sig); free(ctx);
+    free(sig); free(ctx); free(sig_2);
     return true;
 }
 
