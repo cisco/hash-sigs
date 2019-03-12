@@ -1,5 +1,5 @@
 This code attempts to be a usable implementation of of the LMS Hash Based
-Signature Scheme from draft-mcgrew-hash-sigs-08.
+Signature Scheme from draft-mcgrew-hash-sigs-15.
 
 This is a signature scheme (that is, someone with the private key can sign
 messages, someone with the public key can verify sigantures, but cannot
@@ -450,14 +450,15 @@ likely not to implement it:
   a table for typical parameter sets on a typical compiler might not be that
   hideous).
 
-- Could we make this package valid C++ as well?  One issue is the malloc's
+- Should we make this package valid C++ as well?  One issue is the malloc's
   (which aren't casted), we could insert the "extern "C" {" markers (to say
   these functions use the C ABI), are there other issues?
 
   - As for going the other way (making this valid C89), well the biggest issue
-    there is the 64 bit int's we use (sequence_t); we do use VLAs, but those
-    shouldn't be that hard to remove.  Yes, we could program around the 64 bit
-    int's, however I don't see the point unless someone really needs this.
+    there is the 64 bit int's we use (sequence_t); we do declare automatics
+    after executable statements, but those wouldn't be hard to move.  Yes,
+    we could program around the 64 bit int's, however I don't see the point
+    unless someone really needs this.
 
 - The logic to distribute updates to the upper level trees (which does the
   work when we're close to the end of the current bottom level tree, when the

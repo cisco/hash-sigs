@@ -246,14 +246,16 @@ static int keygen(const char *keyname, const char *parm_set) {
     list_parameter_set( levels, lm_array, ots_array, aux_size );
 
     /* We'll place the private key here */
-     char private_key_filename[ strlen(keyname) + sizeof (".prv" ) + 1 ];
-     sprintf( private_key_filename, "%s.prv", keyname );
+    size_t private_key_filename_len = strlen(keyname) + sizeof (".prv" ) + 1;
+    char *private_key_filename = malloc(private_key_filename_len);
+    if (!private_key_filename) return 0;
+    sprintf( private_key_filename, "%s.prv", keyname );
 
     /* We'll place the public key in this array */
     unsigned len_public_key = hss_get_public_key_len(levels,
                                                 lm_array, ots_array);
-    if (len_public_key == 0) return 0;
-    unsigned char public_key[len_public_key];
+    if (len_public_key == 0) { free(private_key_filename); return 0; }
+    unsigned char public_key[HSS_MAX_PUBLIC_KEY_LEN];
 
     /* And we'll place the aux data in this array */
     unsigned aux_len;
@@ -264,7 +266,12 @@ static int keygen(const char *keyname, const char *parm_set) {
     } else {
         aux_len = 1;
     }
-    unsigned char aux[aux_len];
+    unsigned char *aux = malloc(aux_len);
+    if (!aux) {
+        printf( "error mallocing aux; not generating aux\n" );
+        aux_len = 0;
+        aux = 0;
+    }
 
     printf( "Generating public key %s (will take a while)\n",
                                        private_key_filename );
@@ -277,53 +284,76 @@ static int keygen(const char *keyname, const char *parm_set) {
         public_key, len_public_key,  /* The public key is placed here */
         aux_size > 0 ? aux : 0, aux_len, /* Where to place the aux data */
         0)) {            /* Use the defaults for extra info */
+            free(private_key_filename);
+            free(aux);
             return 0;
     }
+    free(private_key_filename); private_key_filename = 0;
 
-    char public_key_filename[ strlen(keyname) + sizeof (".pub" ) + 1 ];
+    size_t public_key_filename_len = strlen(keyname) + sizeof (".pub" ) + 1;
+    char *public_key_filename = malloc(public_key_filename_len);
+    if (!public_key_filename) {
+        free(aux);
+        return 0;
+    }
     sprintf( public_key_filename, "%s.pub", keyname );
 
     printf( "Success!\nWriting public key %s\n", public_key_filename );
     FILE *f = fopen( public_key_filename, "w" );
+    free(public_key_filename ); public_key_filename = 0;
     if (!f) {
         fprintf( stderr, "Error: unable to write public key\n" );
+        free(aux);
         return 0;
     }
     if (1 != fwrite( public_key, len_public_key, 1, f )) {
         /* Write failed */
         fclose(f);
+        free(aux);
         return 0;
     }
     if (0 != fclose(f)) {
         fprintf( stderr, "Error: unable to close public key file\n" );
         /* Close failed (possibly because pending write failed) */
+        free(aux);
         return 0;
     }
 
     if (aux_size > 0) {
-        char aux_filename[ strlen(keyname) + sizeof (".aux" ) + 1 ];
+        size_t aux_filename_len = strlen(keyname) + sizeof (".aux" ) + 1;
+        char *aux_filename = malloc(aux_filename_len);
+        if (!aux_filename) {
+            fprintf( stderr, "Warning: malloc failure writing to aux file\n" );
+            free(aux);
+            return 1;
+        }
         sprintf( aux_filename, "%s.aux", keyname );
 
         /* Attempt to write the aux file.  Note that if we fail, we'll still */
         /* claim to have succeeded (as the aux file is optional) */
         printf( "Writing aux data %s\n", aux_filename );
         f = fopen( aux_filename, "w" );
+        free(aux_filename); aux_filename = 0;
         if (!f) {
             fprintf( stderr, "Warning: unable to write aux file\n" );
+            free(aux);
             return 1;
         }
         if (1 != fwrite( aux, aux_len, 1, f )) {
             fprintf( stderr, "Warning: unable to write aux file\n" );
             /* Write failed */
             fclose(f);
+            free(aux);
             return 1;
         }
         if (0 != fclose(f)) {
             fprintf( stderr, "Warning: close failed writing aux file\n" );
             /* Close failed (possibly because pending write failed) */
+            free(aux);
             return 1;
         }
     }
+    free(aux);
 
     return 1;
 }
@@ -334,11 +364,22 @@ static int keygen(const char *keyname, const char *parm_set) {
  * writes the signature out to disk
  */
 static int sign(const char *keyname, char **files) {
-    char private_key_filename[ strlen(keyname) + sizeof (".prv" ) + 1 ];
+    int private_key_filename_len = strlen(keyname) + sizeof (".prv" ) + 1;
+    char *private_key_filename = malloc(private_key_filename_len);
+    if (!private_key_filename) {
+        printf( "Malloc failure\n" );
+        return 0;
+    }
     sprintf( private_key_filename, "%s.prv", keyname );
 
         /* Read in the auxilliary file */   
-    char aux_filename[ strlen(keyname) + sizeof (".aux" ) + 1 ];
+    size_t aux_filename_len = strlen(keyname) + sizeof (".aux" ) + 1;
+    char *aux_filename = malloc(aux_filename_len);
+    if (!aux_filename) {
+        printf( "Malloc failure\n" );
+        free(private_key_filename);
+        return 0;
+    }
     sprintf( aux_filename, "%s.aux", keyname );
     size_t len_aux_data = 0;
     void *aux_data = read_file( aux_filename, &len_aux_data );
@@ -362,6 +403,8 @@ static int sign(const char *keyname, char **files) {
         printf( "Error loading private key\n" );
         free(aux_data);
         hss_free_working_key(w);
+        free(aux_filename);
+        free(private_key_filename);
         return 0;
     }
     free(aux_data);
@@ -378,10 +421,19 @@ static int sign(const char *keyname, char **files) {
     if (sig_len == 0) {
         printf( "Error getting signature len\n" );
         hss_free_working_key(w);
+        free(aux_filename);
+        free(private_key_filename);
         return 0;
     }
 
-    unsigned char sig[sig_len];
+    unsigned char *sig = malloc(sig_len);
+    if (!sig) {
+        printf( "Error during malloc\n" );
+        hss_free_working_key(w);
+        free(aux_filename);
+        free(private_key_filename);
+        return 0;
+    }
     int i;
     for (i=0; files[i]; i++) {
         printf( "Signing %s\n", files[i] );
@@ -429,23 +481,34 @@ static int sign(const char *keyname, char **files) {
             continue;
         }
 
-        char sig_file_name[ strlen(files[i]) + sizeof( ".sig" ) + 1 ];
+        size_t sig_file_name_len = strlen(files[i]) + sizeof( ".sig" ) + 1;
+        char *sig_file_name = malloc( sig_file_name_len );
+        if (!sig_file_name) {
+            printf( "    Malloc failure\n" );
+            continue;
+        }
         sprintf( sig_file_name, "%s.sig", files[i] );
         f = fopen( sig_file_name, "w" );
         if (!f) {
             printf( "    %s: unable to create\n", sig_file_name );
+            free(sig_file_name);
             continue;
         }
         if (1 != fwrite( sig, sig_len, 1, f )) {
             printf( "    %s: unable to write\n", sig_file_name );
             fclose(f);
+            free(sig_file_name);
             continue;
         }
         fclose(f);
         printf( "    signed (%s)\n", sig_file_name );
+        free(sig_file_name);
     }
 
     hss_free_working_key(w);
+    free(aux_filename);
+    free(private_key_filename);
+    free(sig);
     return 1;
 }
 
@@ -458,11 +521,17 @@ static int sign(const char *keyname, char **files) {
  */
 static int verify(const char *keyname, char **files) {
     /* Step 1: read in the public key */
-    char public_key_filename[ strlen(keyname) + sizeof ".pub" + 1 ];
+    size_t public_key_filename_len = strlen(keyname) + sizeof ".pub" + 1;
+    char *public_key_filename = malloc(public_key_filename_len);
+    if (!public_key_filename) {
+         printf( "Error: malloc failure\n" );
+         return 0;
+    }
     sprintf( public_key_filename, "%s.pub", keyname );
     unsigned char *pub = read_file( public_key_filename, 0 );
     if (!pub) {
-         printf( "Error: unable to read %s\n", public_key_filename );
+         printf( "Error: unable to read %s.pub\n", keyname );
+         free(public_key_filename);
          return 0;
     }
     int i;
@@ -470,12 +539,19 @@ static int verify(const char *keyname, char **files) {
         printf( "Verifying %s\n", files[i] );
 
             /* Read in the signatre */
-        char sig_file_name[ strlen(files[i]) + sizeof( ".sig" ) + 1 ];
+        size_t sig_file_name_len = strlen(files[i]) + sizeof( ".sig" ) + 1;
+        char *sig_file_name = malloc(sig_file_name_len);
+        if (!sig_file_name) {
+            printf( "Error: malloc failure\n" );
+            free(public_key_filename);
+            return 0;
+        }
         sprintf( sig_file_name, "%s.sig", files[i] );
         size_t sig_len;
         void *sig = read_file( sig_file_name, &sig_len );
+        free(sig_file_name ); sig_file_name = 0;
         if (!sig) {
-            printf( "    %s: unable to read signature file %s\n", files[i], sig_file_name );
+            printf( "    %s: unable to read signature file %s.sig\n", files[i], files[i] );
             continue;
         }
 
@@ -524,6 +600,7 @@ static int verify(const char *keyname, char **files) {
         }
     }
 
+    free(public_key_filename);
     return 1;
 }
 

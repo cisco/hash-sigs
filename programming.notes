@@ -450,6 +450,17 @@ sources.
   because malloc objected.  Instead, the code will step to a "plan B" on a
   failure, which will do the exact same job (but slower; if it wasn't slower,
   it wouldn't be plan B).
+  The testing code (and demo.c) does use malloc, and will fail if the
+  malloc fails; these tools can be expected to run only when we have plenty
+  of memory, hence we feel we don't need a plan B there.
+
+- Use of Variable Length Arrays
+  Now, we used to use VLAs (a C99 language feature) at places.  However,
+  someone's compiler couldn't handle them (even though they implemented the
+  rest of the C99 features we used), and so we went and reworked the code to
+  remove them.  In any case, removing the VLAs might make this code a bit more
+  small-end-device friendly (as those small devices tend not to have huge
+  stacks).
 
 - Zeroization
   Whenever we're done with a value whose leakage might allow someone to

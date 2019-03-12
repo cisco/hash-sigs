@@ -31,18 +31,24 @@ static bool do_validate( void *public_key,
     }
 
     size_t i, segment;
+    unsigned char *buffer = malloc(step);
+    if (!buffer) {
+        if (error) *error = hss_error_out_of_memory;
+        return false;
+    }
     for (i = 0; i < len_message; i += segment) {
         segment = step;
         if (segment > len_message - i) segment = len_message - i;
-        unsigned char buffer[segment];
         memcpy( buffer, &message[i], segment );
         if (!hss_validate_signature_update( &ctx,
                        buffer, segment )) {
                 /* This shouldn't happen */
             if (error) *error = hss_range_processing_error;
+            free(buffer);
             return false;
         }
     }
+    free(buffer);
 
     bool success = hss_validate_signature_finalize( &ctx, signature, &info );
     if (error) *error = hss_extra_info_test_error_code( &info );
@@ -60,11 +66,11 @@ bool test_verify_inc(bool fast_flag, bool quiet_flag) {
 
     for (d=1; d<=MAX_D; d++) {
     size_t len_private_key = hss_get_private_key_len(d, lm_array, lm_ots_array );
-    if (len_private_key == 0) { 
+    if (len_private_key == 0 || len_private_key > HSS_MAX_PRIVATE_KEY_LEN) { 
         printf( "    Len private key failed\n" );
         return false;
     }
-    unsigned char private_key[len_private_key];
+    unsigned char private_key[HSS_MAX_PRIVATE_KEY_LEN];
 
     unsigned len_public_key = hss_get_public_key_len(d, lm_array, lm_ots_array );
     if (len_public_key == 0) { 
@@ -78,7 +84,7 @@ bool test_verify_inc(bool fast_flag, bool quiet_flag) {
         return false;
     }
 
-    unsigned char public_key[len_public_key];
+    unsigned char public_key[HSS_MAX_PUBLIC_KEY_LEN];
 
     unsigned char aux_data[1000];
     
@@ -103,7 +109,12 @@ bool test_verify_inc(bool fast_flag, bool quiet_flag) {
         return false;
     }
 
-    unsigned char signature[len_signature];
+    unsigned char *signature = malloc(len_signature);
+    if (!signature) {
+        printf( "    *** malloc failure\n" );
+        return false;
+    }
+
     /*
      * Try correct validations, at various step levels
      */
@@ -120,6 +131,7 @@ bool test_verify_inc(bool fast_flag, bool quiet_flag) {
                                  signature, len_signature, 0 )) {
             printf( "    *** failed signing test message\n" );
             hss_free_working_key(w);
+            free(signature);
             return false;
         }
 
@@ -128,6 +140,7 @@ bool test_verify_inc(bool fast_flag, bool quiet_flag) {
                           signature, len_signature, step, 0 )) {
             printf( "    *** failed valid signature\n" );
             hss_free_working_key(w);
+            free(signature);
             return false;
         }
     }
@@ -141,11 +154,13 @@ bool test_verify_inc(bool fast_flag, bool quiet_flag) {
                           signature, len_signature, 7, &error )) {
         printf( "    *** incorrect message validated\n" );
         hss_free_working_key(w);
+        free(signature);
         return false;
     }
     if (error != hss_error_bad_signature) {
         printf( "    *** incorrect error code\n" );
         hss_free_working_key(w);
+        free(signature);
         return false;
     }
 
@@ -158,6 +173,7 @@ bool test_verify_inc(bool fast_flag, bool quiet_flag) {
                                  signature, len_signature, 0 )) {
         printf( "    *** failed signing test message\n" );
         hss_free_working_key(w);
+        free(signature);
         return false;
     }
     int count = 0;
@@ -176,11 +192,13 @@ bool test_verify_inc(bool fast_flag, bool quiet_flag) {
                           &error )) {
                 printf( "    *** incorrect signature validated\n" );
                 hss_free_working_key(w);
+                free(signature);
                 return false;
             }
             if (error != hss_error_bad_signature) {
                 printf( "    *** incorrect error code\n" );
                 hss_free_working_key(w);
+                free(signature);
                 return false;
             }
             signature[i] ^= b;
@@ -193,11 +211,13 @@ bool test_verify_inc(bool fast_flag, bool quiet_flag) {
                           &error)) {
         printf( "    *** incorrect signature validated\n" );
         hss_free_working_key(w);
+        free(signature);
         return false;
     }
     if (error != hss_error_bad_signature) {
         printf( "    *** incorrect error code\n" );
         hss_free_working_key(w);
+        free(signature);
         return false;
     }
 
@@ -207,10 +227,12 @@ bool test_verify_inc(bool fast_flag, bool quiet_flag) {
                           signature, len_signature, sizeof test_message, 0 )) {
         printf( "    *** error in test\n" );
         hss_free_working_key(w);
+        free(signature);
         return false;
     }
 
     hss_free_working_key(w);
+    free(signature);
     }
 
     return true;

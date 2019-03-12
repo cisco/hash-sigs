@@ -63,7 +63,8 @@ bool test_keygen(bool fast_flag, bool quiet_flag) {
     int default_d = 2;
     int default_pubkey_size = hss_get_public_key_len( default_d, default_lm_type, default_ots_type );
     int default_privkey_size = hss_get_private_key_len( default_d, default_lm_type, default_ots_type );
-    if (!default_pubkey_size || !default_privkey_size) {
+    if (!default_pubkey_size || default_pubkey_size > HSS_MAX_PUBLIC_KEY_LEN ||
+        !default_privkey_size || default_privkey_size > HSS_MAX_PRIVATE_KEY_LEN) {
         printf( "Internal error: bad parm set\n" );
         return false;
     }
@@ -73,8 +74,8 @@ bool test_keygen(bool fast_flag, bool quiet_flag) {
      * basically functional
      */
     {
-        unsigned char pubkey[default_pubkey_size];
-        unsigned char privkey[default_privkey_size];
+        unsigned char pubkey[HSS_MAX_PUBLIC_KEY_LEN];
+        unsigned char privkey[HSS_MAX_PRIVATE_KEY_LEN];
         got_len = 0;
         if (!hss_generate_private_key( rand_1,
                      default_d, default_lm_type, default_ots_type,
@@ -95,8 +96,8 @@ bool test_keygen(bool fast_flag, bool quiet_flag) {
          * Try it again with the same seed, make sure it generates the same
          * pub/priv key
          */
-        unsigned char pubkey_2[default_pubkey_size];
-        unsigned char privkey_2[default_privkey_size];
+        unsigned char pubkey_2[HSS_MAX_PUBLIC_KEY_LEN];
+        unsigned char privkey_2[HSS_MAX_PRIVATE_KEY_LEN];
         if (!hss_generate_private_key( rand_1,
                      default_d, default_lm_type, default_ots_type,
                      NULL, privkey_2, pubkey_2, default_pubkey_size,
@@ -273,8 +274,8 @@ bool test_keygen(bool fast_flag, bool quiet_flag) {
 
     /* Now, test the update private key logic */
     {
-        unsigned char pubkey[default_pubkey_size];
-        unsigned char privkey[default_privkey_size];
+        unsigned char pubkey[HSS_MAX_PUBLIC_KEY_LEN];
+        unsigned char privkey[HSS_MAX_PRIVATE_KEY_LEN];
 
         /* Make sure that if we get the same priv key, whether we use an */
         /* update_private_key function, or if we don't */
@@ -354,24 +355,34 @@ bool test_keygen(bool fast_flag, bool quiet_flag) {
         int pubkey_size = hss_get_public_key_len( d, lm_type, ots_type );
         int sig_size = hss_get_signature_len( d, lm_type, ots_type );
         int privkey_size = hss_get_private_key_len( d, lm_type, ots_type );
-        if (!pubkey_size || !sig_size || !privkey_size) {
+        if (!pubkey_size || pubkey_size > HSS_MAX_PUBLIC_KEY_LEN ||
+            !sig_size ||
+            !privkey_size || privkey_size > HSS_MAX_PRIVATE_KEY_LEN) {
             printf( "Internal error: bad parm set %d\n", i );
             return false;
         }
-        unsigned char pubkey[pubkey_size], pubkey_2[pubkey_size];
-        unsigned char sig0[sig_size], sig1[sig_size];
-        unsigned char privkey[privkey_size];
+        unsigned char pubkey[HSS_MAX_PUBLIC_KEY_LEN],
+                      pubkey_2[HSS_MAX_PUBLIC_KEY_LEN];
+        unsigned char *sig0 = malloc(sig_size);
+        unsigned char *sig1 = malloc(sig_size);
+        if (!sig0 || !sig1) {
+            printf( "Malloc failure\n" );
+            return false;
+        }
+        unsigned char privkey[HSS_MAX_PRIVATE_KEY_LEN];
 
         /* Try it with no aux data, and 5 different sizes of aux data */
         if (!hss_generate_private_key( rand_1, d, lm_type, ots_type,
                                        NULL, privkey, pubkey, pubkey_size,
                                        NULL, 0, 0)) {
             printf( "Pubkey gen failure\n" );
+            free(sig0); free(sig1);
             return false;
         }
 
         /* Gen the signature from the private key */
         if (!gen_signature( privkey, NULL, 0, sig0, sig_size, pubkey )) {
+            free(sig0); free(sig1);
             return false;
         }
 
@@ -388,24 +399,29 @@ bool test_keygen(bool fast_flag, bool quiet_flag) {
                                        NULL, privkey, pubkey_2, pubkey_size,
                                        aux_data, this_aux_len, 0)) {
                 printf( "Pubkey gen failure\n" );
+                free(sig0); free(sig1);
                 return false;
             }
             if (0 != memcmp( pubkey, pubkey_2, pubkey_size )) {
                 printf( "Differing auxlens give varying public keys\n" );
+                free(sig0); free(sig1);
                 return false;
             }
 
             /* Gen the signature from the private key */
             if (!gen_signature( privkey, aux_data, this_aux_len, sig1, sig_size, pubkey_2 )) {
+                free(sig0); free(sig1);
                 return false;
             }
 
             /* Something's wrong if the signatures differ */
             if (0 != memcmp( sig0, sig1, sig_size )) {
                 printf( "Differing auxlens give varying private keys\n" );
+                free(sig0); free(sig1);
                 return false;
             }
         }
+        free(sig0); free(sig1);
     }
 
     return true;

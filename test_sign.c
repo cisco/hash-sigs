@@ -86,18 +86,22 @@ static bool test_parm( int d, long num_sig, ... ) {
     int pubkey_size = hss_get_public_key_len( d, lm_type, ots_type );
     int sig_size = hss_get_signature_len( d, lm_type, ots_type );
     int privkey_size = hss_get_private_key_len( d, lm_type, ots_type );
-    if (!pubkey_size || !sig_size || !privkey_size) {
+    if (!pubkey_size || pubkey_size > HSS_MAX_PUBLIC_KEY_LEN ||
+        !sig_size ||
+        !privkey_size || privkey_size > HSS_MAX_PRIVATE_KEY_LEN) {
         printf( "Internal error: bad parm set\n" );
         return false;
     }
-    unsigned char pubkey[pubkey_size];
-    unsigned char sig[sig_size];
-    unsigned char privkey[privkey_size];
+    unsigned char pubkey[HSS_MAX_PUBLIC_KEY_LEN];
+    unsigned char *sig = malloc(sig_size);
+    if (!sig) return false;
+    unsigned char privkey[HSS_MAX_PRIVATE_KEY_LEN];
 
     if (!hss_generate_private_key( rand_1, d, lm_type, ots_type,
                                    NULL, privkey, pubkey, pubkey_size,
                                    NULL, 0, 0)) {
         printf( "Pubkey gen failure\n" );
+        free(sig);
         return false;
     }
 
@@ -105,6 +109,7 @@ static bool test_parm( int d, long num_sig, ... ) {
                        0, NULL, 0, 0 );
     if (!w) {
         printf( "Error loading working key\n" );
+        free(sig);
         return false;
     }
 
@@ -121,11 +126,13 @@ static bool test_parm( int d, long num_sig, ... ) {
         if (success) {
              printf( "Error: signature succeeded with too small of a buffer\n" );
              hss_free_working_key(w);
+             free(sig);
              return false;
         }
         if (hss_extra_info_test_error_code(&info) != hss_error_buffer_overflow) {
              printf( "Error: too small buffer gives wrong error\n" );
              hss_free_working_key(w);
+             free(sig);
              return false;
         }
 
@@ -136,11 +143,13 @@ static bool test_parm( int d, long num_sig, ... ) {
         if (success || !all_zeros(sig, sig_size)) {
              printf( "Error: signature succeeded when key update failed\n" );
              hss_free_working_key(w);
+             free(sig);
              return false;
         }
         if (hss_extra_info_test_error_code(&info) != hss_error_private_key_write_failed) {
              printf( "Error: update failure gives wrong error\n" );
              hss_free_working_key(w);
+             free(sig);
              return false;
         }
     }
@@ -168,6 +177,7 @@ static bool test_parm( int d, long num_sig, ... ) {
             if (hss_extra_info_test_error_code(&info) != hss_error_private_key_expired) {
                  printf( "Error: private key expiry failure gives wrong error\n" );
                  hss_free_working_key(w);
+                 free(sig);
                  return false;
             }
         }
@@ -241,10 +251,12 @@ static bool test_parm( int d, long num_sig, ... ) {
     }
 
     hss_free_working_key(w);
+    free(sig);
     return retval;
 
 failed:
     printf( "Signature did not match expected\n" );
     hss_free_working_key(w);
+    free(sig);
     return false;
 }

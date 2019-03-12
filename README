@@ -1,5 +1,5 @@
 This code attempts to be a usable implementation of of the LMS Hash Based
-Signature Scheme from draft-mcgrew-hash-sigs-07.
+Signature Scheme from draft-mcgrew-hash-sigs-15.
 
 This is a signature scheme (that is, someone with the private key can sign
 messages, someone with the public key can verify sigantures, but cannot
@@ -62,6 +62,13 @@ Step 3a: reserve N signatures
   function won't need to be called for the next N signature generations).
   Of course, if the application exits without using all those N signatures,
   those will still be considered used.
+  There are actually two variants of this; you could either has that N
+  signatures be reserved now (hss_reserve_signature), alternatively, you
+  can give a standing order that when we run out, we reserve extra
+  signatures (hss_set_autoreserve).  The former works well if you have
+  some idle time periodically (and so this write-to-disk process mostly
+  happens when youre not busy); the latter works better if you don't have
+  idle time (and want to reduce the number of writes to disk).
 
 
 The workflow for the verifier is easy: you pass the message, the public key
@@ -194,8 +201,8 @@ We also have an optional third section to the private key:
      - For a level 20 top level tree, 10916 bytes of aux data allows us to
        regen the top level tree in circa a second.  That means that, for a
        20/10 level tree, generating the private key is expensive (3 minutes
-       on my test machine), but restarts after that can be done in a second
-       or two.
+       on my test machine, a 3.3GHz Xeon), but restarts after that can be done
+       in a second or two.
      - We also authenticate the auxiliary data; that means that an adversary
        who can corrupt the auxiliary data can increase the time it takes for
        us to load the working key; however they don't get any other advantage.
@@ -265,7 +272,7 @@ real applications really ought not do.
 General notes:
 
 - Advice about parameter sets: while this supports all the HSS parameter sets
-  currently allowed in draft-mcgrew-hash-sigs-07, some work better than others
+  currently allowed in draft-mcgrew-hash-sigs-08, some work better than others
   The general recommendation is to use a few large trees (that is, with lots
   of levels), rather than using a number of levels of smaller trees; this
   package tries to make large trees not that costly (and reducing the number
@@ -273,17 +280,17 @@ General notes:
   reasonable amount of auxiliary data available (and ideally, multithreading),
   then making the top level tree H=20 (or even H=25) is doable; the main cost
   is the time to do the initial key generation (which in most cases is a rare
-  event).  On my test machine, I can generate a key with a H=20 tree on top
-  (with W=8) in 3 minutes (multithreaded); loading that key into memory (with
-  10k of aux data, with a single H=10 tree below it) takes 1-2 seconds.  An
-  H=25 tree on top took 1.5 hours; loading that key into memory (with 1Meg of
-  aux data) took a second.  Increasing the lower tree to H=15 makes loading
-  take 6 seconds (without affecting the key generation time).  Those parameter
-  sets give reasonable speed, with 3.3-3.7k signatures, and allow 1 billion to
-  1 trillion signatures per private key (which I expect should be sufficient
-  for most uses; at 1000 signatures per second, that's enough to last you
-  either 10 days (top H=20, bottom H=14), a year, or 3 decades (top H=25,
-  bottom H=15).
+  event).  On my test machine (a 3.3GHz Xeon), I can generate a key with a
+  H=20 tree on top (with W=8) in 3 minutes (multithreaded); loading that key
+  into memory (with 10k of aux data, with a single H=10 tree below it) takes
+  1-2 seconds.  An H=25 tree on top took 1.5 hours; loading that key into
+  memory (with 1Meg of aux data) took a second.  Increasing the lower tree to
+  H=15 makes loading take 6 seconds (without affecting the key generation
+  time).  Those parameter sets give reasonable speed, with 3.3-3.7k
+  signatures, and allow 1 billion to 1 trillion signatures per private key
+  (which I expect should be sufficient for most uses; at 1000 signatures per
+  second, that's enough to last you between 10 days (top H=20, bottom H=10)
+  to 3 decades (top H=25, bottom H=15).
       Here's a table that goes through a list of various parameter sets.
   They all have W=8 (which minimizes signature sizes, while increasing time),
   and were measured on my test platform (with threading enabled; times would
@@ -359,22 +366,6 @@ General notes:
   applications are happy with a reasonable default can be placed into the
   extra_info structure); I don't want to lock us in to what we have right now.
 
-- Note that there is a MUST statement in the draft that this implementation
-  does not comply to:
-
-      These key pairs, and their identifiers, MUST be generated
-      independently.  All of the information of the leaf level L-1,
-      including the private key, MUST NOT be stored in nonvolatile memory.
-
-  Actually, we generate everything (including data from level L-1) from the
-  secret seed, which is stored in secure nonvolatile storage as a part of the
-  private key.  We do this because our model is that we might restart at any
-  time, and on a restart, we reload the private key, which recreates the tree
-  structure from scratch).  If we generated the bottom level randomly, that
-  would mean the next level OTS signature would sign two different messages.
-  Now, we could autoadvance to the next L-1 tree, however that would use up
-  signatures for no good reason.
-
 - This package will allow at most 18446744073709551615 signatures per private
   key (that's 2**64-1), even if the parameter set would allow more.  If you
   think you need more signatures than that, well, dude, what are you smoking?
@@ -410,16 +401,6 @@ sufficiently complex that I'm not likely to do anything that adds even more
 complexity unless someone has a real need.  If you do have a real need (for
 one of the below ideas, or something else), plesae tell me; otherwise, I'm 
 likely not to implement it:
-
-- It feels like the reservation primitive, as implemented, isn't ideal, as it
-  doesn't give any feedback to the application (and so it doesn't know how
-  close we are to the limit).
-  One possibility would be to have the signature algorithm automatically
-  advance the reservation count by N (rather than 1) when it uses up the last
-  reserveration; this means that the application doesn't need to do anything
-  (other than specify N at load time) to do a private key update once every
-  N'th signature; however it does mean that when we do write to secure
-  storage, we do it during signature time.
 
 - Extend multithreading to generate the higher level Merkle signatures when we
   step to the next lower level Merkle tree.  We do multithreading for most of
@@ -469,14 +450,15 @@ likely not to implement it:
   a table for typical parameter sets on a typical compiler might not be that
   hideous).
 
-- Could we make this package valid C++ as well?  One issue is the malloc's
+- Should we make this package valid C++ as well?  One issue is the malloc's
   (which aren't casted), we could insert the "extern "C" {" markers (to say
   these functions use the C ABI), are there other issues?
 
   - As for going the other way (making this valid C89), well the biggest issue
-    there is the 64 bit int's we use (sequence_t); we do use VLAs, but those
-    shouldn't be that hard to remove.  Yes, we could program around the 64 bit
-    int's, however I don't see the point unless someone really needs this.
+    there is the 64 bit int's we use (sequence_t); we do declare automatics
+    after executable statements, but those wouldn't be hard to move.  Yes,
+    we could program around the 64 bit int's, however I don't see the point
+    unless someone really needs this.
 
 - The logic to distribute updates to the upper level trees (which does the
   work when we're close to the end of the current bottom level tree, when the
@@ -541,15 +523,6 @@ likely not to implement it:
 - Should the verifier cache previous successful verifications (at least, the
   top level trees)?  I personally don't think it's worth the bother (or the
   complexity).
-
-- This might end up being used as the bottom half of a hybrid signature
-  system.  The biggest change that the current hybrid proposal would need is
-  'partial trees', that is, trees were some of the authentication path is
-  artificial (that is, arbitrary values that don't correspond to OTS public
-  values).  To do this, we'd probably end up having a 'current level' setting
-  on the merkle_level structure, and a bunch of changes to initialize and
-  respect it; we'd also add a partial_tree parameter to the hss_extra_info
-  (which would tell hss_generate_working_key to generate such a structure).
 
 - We could design a signature format that's somewhat shorter; (although the
   proof may need fiddling in some cases):

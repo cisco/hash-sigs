@@ -59,8 +59,8 @@ bool test_key_load(bool fast_flag, bool quiet_flag) {
 
     unsigned len_public_key = hss_get_public_key_len(LEVELS, parm_set,
                                        ots_parm_set);
-    if (len_public_key == 0) return false;
-    unsigned char public_key[ len_public_key ];
+    if (len_public_key == 0 || len_public_key > HSS_MAX_PUBLIC_KEY_LEN) return false;
+    unsigned char public_key[ HSS_MAX_PUBLIC_KEY_LEN ];
 
     unsigned char aux_data[2000];
 

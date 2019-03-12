@@ -45,19 +45,21 @@ bool run_test(unsigned L, const param_set_t *lm, const param_set_t *ots) {
     size_t private_len = hss_get_private_key_len(L, lm, ots);
     size_t public_len = hss_get_public_key_len(L, lm, ots);
     size_t sig_len = hss_get_signature_len(L, lm, ots);
-    size_t aux_len = 1000;
-    if (private_len == 0 || public_len == 0 || sig_len == 0) {
+#define aux_len 1000
+    if (private_len == 0 || private_len > HSS_MAX_PRIVATE_KEY_LEN ||
+        public_len == 0 || public_len > HSS_MAX_PUBLIC_KEY_LEN || 
+        sig_len == 0) {
         printf( "  Bad parm set\n" );
         return false;
     }
 
     /* Test out the key creation logic with this parm set */
-    unsigned char private[ private_len ];
-    unsigned char public[ public_len ];
+    unsigned char private[ HSS_MAX_PRIVATE_KEY_LEN ];
+    unsigned char public[ HSS_MAX_PUBLIC_KEY_LEN ];
     unsigned char aux[ aux_len ];
     for (i=0; i<MAX_THREAD; i++) {
-        unsigned char private_temp[ private_len ];
-        unsigned char public_temp[ public_len ];
+        unsigned char private_temp[ HSS_MAX_PRIVATE_KEY_LEN ];
+        unsigned char public_temp[ HSS_MAX_PUBLIC_KEY_LEN ];
         unsigned char aux_temp[ aux_len ];
         memset( aux_temp, 0, sizeof aux_temp );
         if (!hss_generate_private_key( rand_1,
@@ -89,6 +91,9 @@ bool run_test(unsigned L, const param_set_t *lm, const param_set_t *ots) {
         }
     }
 
+    unsigned char *sig = 0;
+    unsigned char *sig_temp = 0;
+
     /* Now, test out the key loading logic */
     bool success_flag = false;
     struct hss_working_key *w[MAX_THREAD] = { 0 };
@@ -103,19 +108,21 @@ bool run_test(unsigned L, const param_set_t *lm, const param_set_t *ots) {
 
     int j;
     const unsigned char test_message[] = "Hello spots fans";
+    sig = malloc(sig_len);
+    sig_temp = malloc(sig_len);
+    if (!sig || !sig_temp) goto failed;
+   
     for (j=0; j<25; j++) {
-        unsigned char private_next[ private_len ];
-        unsigned char sig[ sig_len ];
+        unsigned char private_next[ HSS_MAX_PRIVATE_KEY_LEN ];
 
         /* Now, test out generating a signature */
         for (i=0; i<MAX_THREAD; i++) {
-            unsigned char private_temp[ private_len ];
-            unsigned char sig_temp[ sig_len ];
+            unsigned char private_temp[ HSS_MAX_PRIVATE_KEY_LEN ];
             memcpy( private_temp, private, private_len );
             if (!hss_generate_signature( w[i],
                      0, private_temp,
                      test_message, sizeof test_message, 
-                     sig_temp, sizeof sig_temp,
+                     sig_temp, sig_len,
                      &info[i] )) {
                 printf( "  Signature gen failed\n" );
                 goto failed;
@@ -154,6 +161,8 @@ failed:
     for (i=0; i<MAX_THREAD; i++) {
         hss_free_working_key( w[i] );
     }
+    free(sig);
+    free(sig_temp);
     return success_flag;
 }
 

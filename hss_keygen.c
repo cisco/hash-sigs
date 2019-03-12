@@ -166,30 +166,39 @@ bool hss_generate_private_key(
     /* appears in the aux data, and 4*log2 of the number of core we have */
     unsigned num_cores = hss_thread_num_tracks(info->num_threads);
     unsigned level;
-    for (level = h0-1; level > 0; level--) {
+    unsigned char *dest = 0;  /* The area we actually write to */
+    void *temp_buffer = 0;  /* The buffer we need to free when done */
+    for (level = h0-1; level > 2; level--) {
             /* If our bottom-most aux data is at this level, we want it */
-        if (expanded_aux_data && expanded_aux_data->data[level]) break;
+        if (expanded_aux_data && expanded_aux_data->data[level]) {
+                /* Write directly into the aux area */
+            dest = expanded_aux_data->data[level];
+            break;
+        }
 
             /* If going to a higher levels would mean that we wouldn't */
             /* effectively use all the cores we have, use this level */ 
-        if ((1<<level) < 4*num_cores) break;
+        if ((1<<level) < 4*num_cores) {
+                /* We'll write into a temp area; malloc the space */
+            size_t temp_buffer_size = (size_t)size_hash << level;
+            temp_buffer = malloc(temp_buffer_size);
+            if (!temp_buffer) {
+                /* Couldn't malloc it; try again with s smaller buffer */
+                continue;
+            }
+                /* Use this buffer */
+            dest = temp_buffer;
+            break;
+        }
     }
 
-    /* Get the buffer where our parallel process is going to write into */
-    /* We'll either use the aux data itself, or a temp buffer */
-    unsigned temp_buffer_size;
-    unsigned char *dest;
-    if (expanded_aux_data && expanded_aux_data->data[level]) {
-        /* We're going directly into the aux data */
-        dest = expanded_aux_data->data[level];
-        temp_buffer_size = 1;  /* We're not using the temp buffer */
-     } else {
-        /* We're going into the temp buffer */
-        dest = 0;
-        temp_buffer_size = (size_t)size_hash << level;
+    /* Worse comes the worse, if we can't malloc anything, use a */
+    /* small backup buffer */
+    unsigned char worse_case_buffer[ 4*MAX_HASH ];
+    if (!dest) {
+        dest = worse_case_buffer;
+        /* level == 2 if we reach here, so the buffer is big enough */
     }
-    unsigned char temp_buffer[ temp_buffer_size ];
-    if (!dest) dest = temp_buffer;
 
     /*
      * Now, issue all the work items to generate the intermediate hashes
@@ -262,6 +271,7 @@ bool hss_generate_private_key(
         } else {
             hss_zeroize( context, PRIVATE_KEY_LEN );
         }
+        free(temp_buffer);
         return false;
     }
 
@@ -335,6 +345,7 @@ bool hss_generate_private_key(
     /* Hey, what do you know -- it all worked! */
     hss_zeroize( private_key, sizeof private_key ); /* Zeroize local copy of */
                                                    /* the private key */
+    free(temp_buffer);
     return true;
 }
 
