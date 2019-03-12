@@ -40,7 +40,10 @@ void hss_hash_ctx(void *result, int hash_type, union hash_context *ctx,
  */
 extern bool hss_verbose;
 
-#define MAX_HASH   32   /* Length of the largest hash we support */
+/*
+ * This constant has migrated to common_defs.h
+ */
+/* #define MAX_HASH   32 */  /* Length of the largest hash we support */
 
 unsigned hss_hash_length(int hash_type);
 unsigned hss_hash_blocksize(int hash_type);
