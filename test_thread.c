@@ -29,6 +29,24 @@ static bool rand_1( void *output, size_t len) {
     return true;
 }
 
+static bool read_private_key(unsigned char *private_key,
+                             size_t len_private_key, void *context) {
+    unsigned char **p = context;
+    if (!*p) return false;
+
+    memcpy( private_key, *p, len_private_key );
+    return true;
+}
+
+static bool update_private_key(unsigned char *private_key,
+                             size_t len_private_key, void *context) {
+    unsigned char **p = context;
+    if (!*p) return false;
+
+    memcpy( *p, private_key, len_private_key );
+    return true;
+}
+
 #define MAX_THREAD 16
 
 bool run_test(unsigned L, const param_set_t *lm, const param_set_t *ots) {
@@ -97,9 +115,12 @@ bool run_test(unsigned L, const param_set_t *lm, const param_set_t *ots) {
     /* Now, test out the key loading logic */
     bool success_flag = false;
     struct hss_working_key *w[MAX_THREAD] = { 0 };
+    unsigned char *current_key = NULL;
     for (i=0; i<MAX_THREAD; i++) {
-        w[i] = hss_load_private_key( 0, private,
+        current_key = private;
+        w[i] = hss_load_private_key( read_private_key, update_private_key, &current_key,
                  0, aux, aux_len, &info[i] );
+            current_key = NULL;
         if (!w[i]) {
             printf( "  Load private key failed\n" );
             goto failed;
@@ -119,14 +140,15 @@ bool run_test(unsigned L, const param_set_t *lm, const param_set_t *ots) {
         for (i=0; i<MAX_THREAD; i++) {
             unsigned char private_temp[ HSS_MAX_PRIVATE_KEY_LEN ];
             memcpy( private_temp, private, private_len );
+            current_key = private_temp;
             if (!hss_generate_signature( w[i],
-                     0, private_temp,
                      test_message, sizeof test_message, 
                      sig_temp, sig_len,
                      &info[i] )) {
                 printf( "  Signature gen failed\n" );
                 goto failed;
             }
+            current_key = NULL;
 
             if (i == 0) {
                 memcpy( private_next, private_temp, private_len );
