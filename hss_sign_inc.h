@@ -14,7 +14,6 @@
  * Usage:
  *    struct hss_sign_inc ctx;
  *    bool success = hss_sign_init( &ctx, working_key,
- *            update_private_key, private_key_context,
  *            signature, signature_buffer_len, 
  *            &lsat_signature );
  *    hss_sign_update( &ctx, message_part_1, len_1 );
@@ -55,9 +54,6 @@ struct hss_extra_info;
 bool hss_sign_init(
     struct hss_sign_inc *ctx,
     struct hss_working_key *working_key,
-    bool (*update_private_key)(unsigned char *private_key,
-            size_t len_private_key, void *context),
-    void *context,
     unsigned char *signature, size_t signature_len,
     struct hss_extra_info *info);
 
