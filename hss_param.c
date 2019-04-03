@@ -73,17 +73,32 @@ bool hss_get_parameter_set( unsigned *levels,
                            param_set_t lm_ots_type[ MAX_HSS_LEVELS ],
                            bool (*read_private_key)(unsigned char *private_key,
                                        size_t len_private_key, void *context),
-                           void *context) {
+                           void *context,
+                           struct hss_extra_info *info) {
+    enum hss_error_code temp_error, *error;
+    if (info) {
+        error = &info->error_code;
+    } else {
+        error = &temp_error;
+    }
     unsigned char private_key[ PRIVATE_KEY_LEN ];
     bool success = false;
 
     if (read_private_key) {
-        if (!read_private_key( private_key, PRIVATE_KEY_SEED, context )) {
+        if (!read_private_key( private_key, PRIVATE_KEY_LEN, context )) {
+            *error = hss_error_private_key_read_failed;
             goto failed;
         }
     } else {
-        if (!context) return false;
-        memcpy( private_key, context, PRIVATE_KEY_SEED );
+        if (!context) {
+            *error = hss_error_no_private_buffer;
+            return false;
+        }
+        memcpy( private_key, context, PRIVATE_KEY_LEN );
+    }
+    if (!hss_check_private_key(private_key)) {
+         *error = hss_error_bad_private_key;
+         goto failed;
     }
 
     /* Scan through the private key to recover the parameter sets */
@@ -103,21 +118,28 @@ bool hss_get_parameter_set( unsigned *levels,
         case LMS_SHA256_N32_H15: total_height += 15; break;
         case LMS_SHA256_N32_H20: total_height += 20; break;
         case LMS_SHA256_N32_H25: total_height += 25; break;
-        default: goto failed;
+        default:
+             *error = hss_error_bad_private_key;
+             goto failed;
         }
         switch (ots) {
         case LMOTS_SHA256_N32_W1:
         case LMOTS_SHA256_N32_W2:
         case LMOTS_SHA256_N32_W4:
         case LMOTS_SHA256_N32_W8:
-            break;
-        default: goto failed;
+             break;
+        default:
+             *error = hss_error_bad_private_key;
+             goto failed;
         }
         lm_type[level] = lm;
         lm_ots_type[level] = ots;
     }
 
-    if (level < MIN_HSS_LEVELS || level > MAX_HSS_LEVELS) goto failed;
+    if (level < MIN_HSS_LEVELS || level > MAX_HSS_LEVELS) {
+        *error = hss_error_bad_private_key;
+        goto failed;
+    }
 
     *levels = level;
 
@@ -143,7 +165,10 @@ bool hss_get_parameter_set( unsigned *levels,
     sequence_t current_count = get_bigendian(
                  private_key + PRIVATE_KEY_INDEX, PRIVATE_KEY_INDEX_LEN );
 
-    if (current_count > max_count) goto failed;  /* Private key expired */
+    if (current_count > max_count) {
+        *error = hss_error_private_key_expired;
+        goto failed;
+    }
 
     success = true;   /* It worked! */
 failed:
@@ -151,3 +176,32 @@ failed:
     hss_zeroize( private_key, sizeof private_key );
     return success;
 }
+
+/* Compute the max number of signatures we can generate */
+sequence_t hss_get_max_seqno( int levels, const param_set_t *lm_type ) {
+    int total_height = 0;
+    int i;
+
+    for (i=0; i<levels; i++) {
+        int this_height;
+        if (!lm_look_up_parameter_set(lm_type[i], 0, 0, &this_height )) {
+            return 0;
+        }
+        total_height += this_height;
+    }
+
+    if (total_height > 64) total_height = 64;  /* (bounded by 2**64) */
+
+    sequence_t max_seqno = ((sequence_t)2 << (total_height-1)) - 1;
+        /* height-1 so we don't try to shift by 64, and hit undefined */
+        /* behavior */
+
+    /* We use the count 0xffff..ffff to signify 'we've used up all our */
+    /* signatures'.  Make sure that is above max_count, even for */
+    /* parameter sets that can literally generate 2**64 signatures (by */
+    /* letting them generate only 2**64-1) */
+    if (total_height == 64) max_seqno--;
+
+    return max_seqno;
+}
+
