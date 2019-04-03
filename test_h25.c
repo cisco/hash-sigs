@@ -64,7 +64,7 @@ bool test_h25(bool fast_flag, bool quiet_flag) {
         printf( "  Generated public key\n" ); fflush(stdout);
     }
 
-    struct hss_working_key *w = hss_load_private_key(NULL, privkey,
+    struct hss_working_key *w = hss_load_private_key(NULL, NULL, privkey,
                        100000, aux, sizeof aux, 0 );
     if (!w) {
         printf( "Error loading working key\n" );
@@ -81,7 +81,7 @@ bool test_h25(bool fast_flag, bool quiet_flag) {
         char message[30];
         sprintf( message, "Message %ld", i );
         unsigned message_len = strlen(message);
-        bool success = hss_generate_signature( w, NULL, privkey,
+        bool success = hss_generate_signature( w,
                       message, message_len,
                       sig, sig_size, 0 );
 
