@@ -118,6 +118,16 @@ bool hss_generate_private_key(
         info->error_code = hss_error_bad_param_set;
         return false;
     }
+        /* Fill in the maximum seqno */
+    sequence_t max_seqno = hss_get_max_seqno( levels, lm_type );
+    if (max_seqno == 0) {
+        info->error_code = hss_error_bad_param_set;
+        return false;
+    }
+    put_bigendian( private_key + PRIVATE_KEY_MAX, max_seqno,
+                   PRIVATE_KEY_MAX_LEN );
+
+        /* Pick the random seed */
     if (!(*generate_random)( private_key + PRIVATE_KEY_SEED,
                    PRIVATE_KEY_SEED_LEN )) {
         info->error_code = hss_error_bad_randomness;
@@ -125,21 +135,18 @@ bool hss_generate_private_key(
     }
 
         /* Now make sure that the private key is written to NVRAM */
-    if (update_private_key) {
-        if (!(*update_private_key)( private_key, PRIVATE_KEY_LEN, context)) {
-            /* initial write of private key didn't take */
-            info->error_code = hss_error_private_key_write_failed;
-            hss_zeroize( private_key, sizeof private_key );
-            return false;
-        }
-    } else {
-        if (context == 0) {
-            /* We weren't given anywhere to place the private key */
-            info->error_code = hss_error_no_private_buffer;
-            hss_zeroize( private_key, sizeof private_key );
-            return false;
-        }
-        memcpy( context, private_key, PRIVATE_KEY_LEN );
+    if (!update_private_key && !context) {
+        /* We weren't given anywhere to place the private key */
+        info->error_code = hss_error_no_private_buffer;
+        hss_zeroize( private_key, sizeof private_key );
+        return false;
+    }
+    enum hss_error_code e = hss_write_private_key_no_w( private_key,
+                        PRIVATE_KEY_LEN, 0, update_private_key, context );
+    if (e != hss_error_none) {
+        info->error_code = e;
+        hss_zeroize( private_key, sizeof private_key );
+        return false;
     }
 
     /* Figure out what would be the best trade-off for the aux level */
@@ -166,39 +173,30 @@ bool hss_generate_private_key(
     /* appears in the aux data, and 4*log2 of the number of core we have */
     unsigned num_cores = hss_thread_num_tracks(info->num_threads);
     unsigned level;
-    unsigned char *dest = 0;  /* The area we actually write to */
-    void *temp_buffer = 0;  /* The buffer we need to free when done */
-    for (level = h0-1; level > 2; level--) {
+    for (level = h0-1; level > 0; level--) {
             /* If our bottom-most aux data is at this level, we want it */
-        if (expanded_aux_data && expanded_aux_data->data[level]) {
-                /* Write directly into the aux area */
-            dest = expanded_aux_data->data[level];
-            break;
-        }
+        if (expanded_aux_data && expanded_aux_data->data[level]) break;
 
             /* If going to a higher levels would mean that we wouldn't */
             /* effectively use all the cores we have, use this level */ 
-        if ((1<<level) < 4*num_cores) {
-                /* We'll write into a temp area; malloc the space */
-            size_t temp_buffer_size = (size_t)size_hash << level;
-            temp_buffer = malloc(temp_buffer_size);
-            if (!temp_buffer) {
-                /* Couldn't malloc it; try again with s smaller buffer */
-                continue;
-            }
-                /* Use this buffer */
-            dest = temp_buffer;
-            break;
-        }
+        if ((1<<level) < 4*num_cores) break;
     }
 
-    /* Worse comes the worse, if we can't malloc anything, use a */
-    /* small backup buffer */
-    unsigned char worse_case_buffer[ 4*MAX_HASH ];
-    if (!dest) {
-        dest = worse_case_buffer;
-        /* level == 2 if we reach here, so the buffer is big enough */
+    /* Get the buffer where our parallel process is going to write into */
+    /* We'll either use the aux data itself, or a temp buffer */
+    unsigned temp_buffer_size;
+    unsigned char *dest;
+    if (expanded_aux_data && expanded_aux_data->data[level]) {
+        /* We're going directly into the aux data */
+        dest = expanded_aux_data->data[level];
+        temp_buffer_size = 1;  /* We're not using the temp buffer */
+     } else {
+        /* We're going into the temp buffer */
+        dest = 0;
+        temp_buffer_size = (size_t)size_hash << level;
     }
+    unsigned char temp_buffer[ temp_buffer_size ];
+    if (!dest) dest = temp_buffer;
 
     /*
      * Now, issue all the work items to generate the intermediate hashes
@@ -271,7 +269,6 @@ bool hss_generate_private_key(
         } else {
             hss_zeroize( context, PRIVATE_KEY_LEN );
         }
-        free(temp_buffer);
         return false;
     }
 
@@ -345,7 +342,6 @@ bool hss_generate_private_key(
     /* Hey, what do you know -- it all worked! */
     hss_zeroize( private_key, sizeof private_key ); /* Zeroize local copy of */
                                                    /* the private key */
-    free(temp_buffer);
     return true;
 }
 
