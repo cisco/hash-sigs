@@ -3,6 +3,7 @@
 #include "hss_internal.h"
 #include "endian.h"
 #include "hss_zeroize.h"
+#include "lm_common.h"
 
 /*
  * Convert a parameter set into the compressed version we use within a private
@@ -183,7 +184,7 @@ sequence_t hss_get_max_seqno( int levels, const param_set_t *lm_type ) {
     int i;
 
     for (i=0; i<levels; i++) {
-        int this_height;
+        unsigned this_height;
         if (!lm_look_up_parameter_set(lm_type[i], 0, 0, &this_height )) {
             return 0;
         }
