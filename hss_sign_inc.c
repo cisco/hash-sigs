@@ -20,8 +20,6 @@
  * Start the process of creating an HSS signature incrementally. Parameters:
  * ctx - The state we'll use to track the incremental signature
  * working_key - the in-memory version of the in-memory private key
- * update_private_key - function to call to update the master private key
- * context - context pointer for above
  * siganture - the buffer to hold the signature
  * signature_len - the length of the buffer
  * this_is_the_last_signature - if non-NULL, this will be set if this
@@ -30,9 +28,6 @@
 bool hss_sign_init(
     struct hss_sign_inc *ctx,
     struct hss_working_key *w,
-    bool (*update_private_key)(unsigned char *private_key,
-            size_t len_private_key, void *context),
-    void *context,
     unsigned char *signature, size_t signature_len,
     struct hss_extra_info *info) {
     struct hss_extra_info temp_info = { 0 };;
@@ -77,7 +72,6 @@ bool hss_sign_init(
      * the bottom level OTS signature
      */
     bool success = hss_generate_signature( w,
-                            update_private_key, context,
                             NULL, 0,  /* <--- we don't have the message yet */
                             signature, signature_len, info );
     if (!success) {
