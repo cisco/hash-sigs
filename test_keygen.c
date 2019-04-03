@@ -432,7 +432,7 @@ static bool gen_signature( unsigned char *privkey,
                unsigned char *sig, size_t sig_len,
                const unsigned char *pubkey) {
     /* Step 1: load the working key */
-    struct hss_working_key *w = hss_load_private_key(NULL, privkey,
+    struct hss_working_key *w = hss_load_private_key(NULL, NULL, privkey,
                        0, aux_data, aux_len, 0 );
     if (!w) {
         printf( "Error loading working key\n" );
@@ -441,7 +441,7 @@ static bool gen_signature( unsigned char *privkey,
 
     /* Step 2: use the working key to sign a message */
     static const unsigned char message[3] = "bcd";
-    bool success = hss_generate_signature( w, NULL, privkey,
+    bool success = hss_generate_signature( w,
                   message, sizeof message,
                   sig, sig_len, 0 );
     if (!success) {
