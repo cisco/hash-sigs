@@ -442,9 +442,6 @@ failed:
  */
 bool hss_generate_signature(
     struct hss_working_key *w,
-    bool (*update_private_key)(unsigned char *private_key,
-            size_t len_private_key, void *context),
-    void *context,
     const void *message, size_t message_len,
     unsigned char *signature, size_t signature_buf_len,
     struct hss_extra_info *info) {
@@ -466,8 +463,8 @@ bool hss_generate_signature(
 
     /* If we're given a raw private key, make sure it's the one we're */
     /* thinking of */
-    if (!update_private_key) {
-        if (0 != memcmp( context, w->private_key, PRIVATE_KEY_LEN)) {
+    if (!w->update_private_key) {
+        if (0 != memcmp( w->context, w->private_key, PRIVATE_KEY_LEN)) {
             info->error_code = hss_error_key_mismatch;
             return false;   /* Private key mismatch */
         }
@@ -494,9 +491,7 @@ bool hss_generate_signature(
     current_count += 1;   /* Bottom most tree isn't already advanced */
 
     /* Ok, try to advance the private key */
-    if (!hss_advance_count(w, current_count,
-                               update_private_key, context, info,
-                               &trash_private_key)) {
+    if (!hss_advance_count(w, current_count, info, &trash_private_key)) {
         /* hss_advance_count fills in the error reason */
         goto failed;
     }
