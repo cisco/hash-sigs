@@ -37,9 +37,6 @@ bool hss_set_autoreserve(struct hss_working_key *w,
  * far it needs to advance it
  */
 bool hss_advance_count(struct hss_working_key *w, sequence_t cur_count,
-        bool (*update_private_key)(unsigned char *private_key,
-                size_t len_private_key, void *context),
-        void *context,
         struct hss_extra_info *info, bool *trash_private_key) {
 
     if (cur_count == w->max_count) {
@@ -52,15 +49,16 @@ bool hss_advance_count(struct hss_working_key *w, sequence_t cur_count,
         *trash_private_key = true;  /* We can't trash our copy of the */
                 /* private key until after we've generated the signature */
                 /* We can trash the copy in secure storage, though */
-        if (update_private_key) {
+        if (w->update_private_key) {
             unsigned char private_key[PRIVATE_KEY_LEN];
             memset( private_key, PARM_SET_END, PRIVATE_KEY_LEN );
-            if (!update_private_key(private_key, PRIVATE_KEY_LEN, context)) {
+            if (!w->update_private_key(private_key, PRIVATE_KEY_LEN,
+                                       w->context)) {
                 info->error_code = hss_error_private_key_write_failed;
                 return false;
             }
         } else {
-            memset( context, PARM_SET_END, PRIVATE_KEY_LEN );
+            memset( w->context, PARM_SET_END, PRIVATE_KEY_LEN );
         }
         return true;
     }
@@ -79,18 +77,14 @@ bool hss_advance_count(struct hss_working_key *w, sequence_t cur_count,
 
         put_bigendian( w->private_key + PRIVATE_KEY_INDEX, new_count,
                        PRIVATE_KEY_INDEX_LEN );
-        if (update_private_key) {
-            if (!update_private_key(w->private_key, PRIVATE_KEY_INDEX_LEN,
-                                   context)) {
-                 /* Oops, we couldn't write the private key; undo the */
-                 /* reservation advance (and return an error) */
-                 info->error_code = hss_error_private_key_write_failed;
-                 put_bigendian( w->private_key + PRIVATE_KEY_INDEX,
+        enum hss_error_code e = hss_write_private_key( w->private_key, w );
+        if (e != hss_error_none) {
+             /* Oops, we couldn't write the private key; undo the */
+             /* reservation advance (and return an error) */
+             info->error_code = e;
+             put_bigendian( w->private_key + PRIVATE_KEY_INDEX,
                        w->reserve_count, PRIVATE_KEY_INDEX_LEN );
-                return false;
-            }
-        } else {
-            put_bigendian( context, new_count, PRIVATE_KEY_INDEX_LEN );
+             return false;
         }
         w->reserve_count = new_count;
     }
@@ -110,9 +104,6 @@ bool hss_advance_count(struct hss_working_key *w, sequence_t cur_count,
  */
 bool hss_reserve_signature(
     struct hss_working_key *w,
-    bool (*update_private_key)(unsigned char *private_key,
-            size_t len_private_key, void *context),
-    void *context,
     unsigned sigs_to_reserve,
     struct hss_extra_info *info) {
     struct hss_extra_info temp_info = { 0 };
@@ -138,8 +129,8 @@ bool hss_reserve_signature(
      * a raw private key (which is cheap to update), however there's no
      * reason we shouldn't support it
      */
-    if (!update_private_key) {
-        if (0 != memcmp( context, w->private_key, PRIVATE_KEY_LEN)) {
+    if (!w->update_private_key) {
+        if (0 != memcmp( w->context, w->private_key, PRIVATE_KEY_LEN)) {
             info->error_code = hss_error_key_mismatch;
             return false;   /* Private key mismatch */
         }
@@ -176,17 +167,13 @@ bool hss_reserve_signature(
     put_bigendian( w->private_key + PRIVATE_KEY_INDEX, new_reserve_count,
                    PRIVATE_KEY_INDEX_LEN );
     /* Update the copy in NV storage */
-    if (update_private_key) {
-        if (!update_private_key(w->private_key, PRIVATE_KEY_INDEX_LEN,
-                                                                  context)) {
-             /* Oops, couldn't update it */
-             put_bigendian( w->private_key + PRIVATE_KEY_INDEX,
+    enum hss_error_code e = hss_write_private_key(w->private_key, w);
+    if (e != hss_error_none) {
+         /* Oops, couldn't update it */
+         put_bigendian( w->private_key + PRIVATE_KEY_INDEX,
                         w->reserve_count, PRIVATE_KEY_INDEX_LEN );
-             info->error_code = hss_error_private_key_write_failed;
-             return false;
-        }
-    } else {
-        memcpy( context, w->private_key, PRIVATE_KEY_INDEX_LEN );
+         info->error_code = e;
+         return false;
     }
     w->reserve_count = new_reserve_count;
 
