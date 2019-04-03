@@ -169,7 +169,7 @@ static bool do_verify( unsigned char *private_key, unsigned char *public_key,
 
     /* Step 1: load the private key into memory */
     w = hss_load_private_key(
-                           NULL, private_key,
+                           NULL, NULL, private_key,
                            0,     /* Minimal memory */
                            aux_data, len_aux_data, 0 );
     if (!w) {
@@ -180,8 +180,7 @@ static bool do_verify( unsigned char *private_key, unsigned char *public_key,
     /* Step 2: generate a valid signature */
     char test_message[3] = "abc";
   
-    if (!hss_generate_signature( w, NULL, private_key,
-                                 test_message, sizeof test_message,
+    if (!hss_generate_signature( w, test_message, sizeof test_message,
                                  signature, signature_len, 0 )) {
         printf( "    *** failed signaing test message\n" );
         goto failed;

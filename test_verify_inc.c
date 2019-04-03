@@ -101,7 +101,7 @@ bool test_verify_inc(bool fast_flag, bool quiet_flag) {
 
     /* Load the private key into memory */
     struct hss_working_key *w = hss_load_private_key(
-                           NULL, private_key,
+                           NULL, NULL, private_key,
                            0,     /* Minimal memory */
                            aux_data, sizeof aux_data, 0 );
     if (!w) {
@@ -126,8 +126,7 @@ bool test_verify_inc(bool fast_flag, bool quiet_flag) {
           "nor prohibited by it to the States, are reserved to the States "
           "respectively, or to the people";
   
-        if (!hss_generate_signature( w, NULL, private_key,
-                                 test_message, sizeof test_message,
+        if (!hss_generate_signature( w, test_message, sizeof test_message,
                                  signature, len_signature, 0 )) {
             printf( "    *** failed signing test message\n" );
             hss_free_working_key(w);
@@ -168,8 +167,7 @@ bool test_verify_inc(bool fast_flag, bool quiet_flag) {
     int i;
     unsigned char test_message[] =  "The powers ...";
   
-    if (!hss_generate_signature( w, NULL, private_key,
-                                 test_message, sizeof test_message,
+    if (!hss_generate_signature( w, test_message, sizeof test_message,
                                  signature, len_signature, 0 )) {
         printf( "    *** failed signing test message\n" );
         hss_free_working_key(w);
