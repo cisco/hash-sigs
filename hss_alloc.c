@@ -234,7 +234,6 @@ signed long initial_mem_target = mem_target; /* DEBUG HACK */
     unsigned level_hash[MAX_HSS_LEVELS];
     unsigned level_height[MAX_HSS_LEVELS];
     unsigned hash_size[MAX_HSS_LEVELS];
-    unsigned total_height = 0;
 
     /* Parse the parameter sets */
     for (i=0; i<levels; i++) {
@@ -245,9 +244,6 @@ signed long initial_mem_target = mem_target; /* DEBUG HACK */
             info->error_code = hss_error_bad_param_set;
             return 0;
         }
-
-        total_height += level_height[i];  /* Also track the number of */
-                      /* signatures we can generate with this parm set */
     }
 
     /*
@@ -514,17 +510,6 @@ printf( "Allocation = %ld\n", initial_mem_target - mem_target + best_mem ); /* D
         return 0;
     }
 /* SANITY CHECK */
-
-    /* Compute the max number of signatures we can generate */
-    if (total_height > 64) total_height = 64; /* (bounded by 2**64) */
-    w->max_count = ((sequence_t)2 << (total_height-1)) - 1; /* height-1 so */
-            /* we don't try to shift by 64, and hit undefined behavior */
-
-        /* We use the count 0xffff..ffff to signify 'we've used up all our */
-        /* signatures'.  Make sure that is above max_count, even for */
-        /* parameter sets that can literally generate 2**64 signatures (by */
-        /* letting them generate only 2**64-1) */
-    if (total_height == 64) w->max_count--;
 
     return w;
 }
