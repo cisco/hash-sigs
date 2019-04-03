@@ -143,7 +143,7 @@ bool test_stat(bool fast_flag, bool quiet_flag) {
             }
 
             struct hss_working_key *w = hss_load_private_key(
-                      NULL, private_key, 0, aux_data, sizeof aux_data, 0);
+                      NULL, NULL, private_key, 0, aux_data, sizeof aux_data, 0);
             if (!w) {
                 printf( "    Privkey load failure\n" );
                 goto failed;
@@ -154,8 +154,7 @@ bool test_stat(bool fast_flag, bool quiet_flag) {
             for (i=0; i<HASH_PER_MERKLE_TREE; i++) {
                 static char test_message[3] = "abc";
                 /* Generate a signature */
-                if (!hss_generate_signature(w, NULL, private_key,
-                                            test_message, sizeof test_message,
+                if (!hss_generate_signature(w, test_message, sizeof test_message,
                                             sig, sig_len, 0)) {
                     printf( "    Signature failure\n" );
                     hss_free_working_key(w);
@@ -225,14 +224,14 @@ if (sig_offset != sig_len) { printf( "Oops: we got something wrong here: %d %d\n
                      /* Hack to advance the key 32**(d-1) - 1 times */
                      /* We do this to make sure that the non-top Merkle */
                      /* trees we use are fresh */
-                     if (!hss_reserve_signature( w, NULL, private_key,
+                     if (!hss_reserve_signature( w,
                              (1L << (LOG_HASH_PER_MERKLE_TREE*(d-1))) - 1,
                              0)) {
                          printf( "    Reservation failure\n" );
                          hss_free_working_key(w);
                          goto failed;
                      }
-                     if (!hss_generate_working_key( NULL, private_key,
+                     if (!hss_generate_working_key( NULL, NULL, private_key,
                                           aux_data, sizeof aux_data, w,
                                           0 )) {
                          printf( "    Regeneration failure\n" );
