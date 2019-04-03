@@ -24,7 +24,7 @@ static bool rand_1( void *output, size_t len) {
 }
 
 
-static unsigned char priv_key[48];
+static unsigned char priv_key[HSS_MAX_PRIVATE_KEY_LEN];
 static unsigned long last_seqno; 
 static bool got_update;
 static bool got_error;
@@ -32,14 +32,15 @@ static bool hit_end;
 
 static bool read_private_key(unsigned char *private_key,
             size_t len_private_key, void *context) {
-    if (len_private_key > 48) return false;
+    if (len_private_key > HSS_MAX_PRIVATE_KEY_LEN) return false;
     memcpy( private_key, priv_key, len_private_key );
     return true;
 }
 
 static bool update_private_key(unsigned char *private_key,
             size_t len_private_key, void *context) {
-    if (len_private_key > 48 || len_private_key < 8) return false;
+    if (len_private_key > HSS_MAX_PRIVATE_KEY_LEN ||
+        len_private_key < 16) return false;
 
     memcpy( priv_key, private_key, len_private_key );
 
@@ -103,7 +104,7 @@ bool test_reserve(bool fast_flag, bool quiet_flag) {
         }
 
         struct hss_working_key *w = hss_load_private_key(
-                read_private_key, NULL, 50000,
+                read_private_key, update_private_key, NULL, 50000,
                 aux_data, sizeof aux_data, NULL );
         if (!w) {
             printf( "Error: unable to load private key\n" );
@@ -127,8 +128,7 @@ bool test_reserve(bool fast_flag, bool quiet_flag) {
             if (do_manual_res && (my_rand() & 0x1f) == 0x0d) {
                 unsigned manual_res = my_rand() & 0x0f;
                 got_update = false;
-                if (!hss_reserve_signature(w, update_private_key, NULL,
-                        manual_res, NULL)) {
+                if (!hss_reserve_signature(w, manual_res, NULL)) {
                     hss_free_working_key(w);
                     printf( "Error: unable to do manual reserve\n" );
                     return false;
@@ -174,8 +174,7 @@ bool test_reserve(bool fast_flag, bool quiet_flag) {
             got_update = false;
             struct hss_extra_info info = { 0 };
             unsigned char signature[ 16000 ];
-            if (!hss_generate_signature(w, update_private_key, NULL,
-                     message, len_message,
+            if (!hss_generate_signature(w, message, len_message,
                      signature, sizeof signature,
                      &info )) {
                 hss_free_working_key(w);
