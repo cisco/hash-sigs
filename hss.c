@@ -20,6 +20,8 @@
 struct hss_working_key *hss_load_private_key(
     bool (*read_private_key)(unsigned char *private_key,
             size_t len_private_key, void *context),
+    bool (*update_private_key)(unsigned char *private_key,
+            size_t len_private_key, void *context),
         void *context,
     size_t memory_target,
     const unsigned char *aux_data, size_t len_aux_data,
@@ -29,7 +31,8 @@ struct hss_working_key *hss_load_private_key(
     unsigned levels;
     param_set_t lm[ MAX_HSS_LEVELS ];
     param_set_t ots[ MAX_HSS_LEVELS ];
-    if (!hss_get_parameter_set( &levels, lm, ots, read_private_key, context)) {
+    if (!hss_get_parameter_set( &levels, lm, ots, read_private_key, context,
+                                 info)) {
         /* Can't read private key, or private key invalid */
         return 0;
     }
@@ -44,7 +47,9 @@ struct hss_working_key *hss_load_private_key(
     }
 
     /* Step 3: load the ephemeral key */
-    if (! hss_generate_working_key( read_private_key, context, 
+    if (! hss_generate_working_key( read_private_key,
+                                    update_private_key,
+                                    context, 
                                     aux_data, len_aux_data, w, info )) {
         /* About the only thing I can see failing here is perhaps */
         /* attempting to reread the private key failed the second time; */
@@ -57,6 +62,122 @@ struct hss_working_key *hss_load_private_key(
     return w;
 }
 
+/*
+ * Routines to read/update the private key
+ */
+
+/*
+ * This computes the checksum that appears in the private key
+ * It is here to detect write errors that might accidentally send us
+ * backwards.  It is unkeyed, because we have no good place to get the
+ * key from (if we assume the attacker can modify the private key, well,
+ * we're out of luck)
+ */
+static void compute_private_key_checksum(
+                  unsigned char checksum[PRIVATE_KEY_CHECKSUM_LEN],
+                  const unsigned char *private_key ) {
+    union hash_context ctx;
+    unsigned char hash[MAX_HASH];
+
+        /* Hash everything except the checksum */
+    hss_init_hash_context( HASH_SHA256, &ctx );
+    hss_update_hash_context( HASH_SHA256, &ctx,
+                             private_key, PRIVATE_KEY_CHECKSUM );
+    hss_update_hash_context( HASH_SHA256, &ctx,
+             private_key + PRIVATE_KEY_CHECKSUM + PRIVATE_KEY_CHECKSUM_LEN,
+             PRIVATE_KEY_LEN -
+                    (PRIVATE_KEY_CHECKSUM + PRIVATE_KEY_CHECKSUM_LEN ));
+    hss_finalize_hash_context( HASH_SHA256, &ctx,
+             hash );
+
+        /* The first 8 bytes of the hash is the checksum */
+    memcpy( checksum, hash, PRIVATE_KEY_CHECKSUM_LEN );
+
+    hss_zeroize( &ctx, sizeof ctx );
+    hss_zeroize( hash, sizeof hash );
+}
+
+bool hss_check_private_key(const unsigned char *private_key) {
+    unsigned char checksum[ PRIVATE_KEY_CHECKSUM_LEN ];
+    compute_private_key_checksum( checksum, private_key );
+    bool success = (0 == memcmp( checksum, &private_key[PRIVATE_KEY_CHECKSUM],
+                     PRIVATE_KEY_CHECKSUM_LEN ));
+    hss_zeroize( checksum, sizeof checksum );
+    return success;
+}
+
+enum hss_error_code hss_read_private_key(unsigned char *private_key,
+            struct hss_working_key *w) {
+    if (w->read_private_key) {
+        if (!w->read_private_key( private_key, PRIVATE_KEY_LEN, w->context)) {
+            hss_zeroize( private_key, PRIVATE_KEY_LEN );
+            return hss_error_private_key_read_failed;
+        }
+    } else {
+        memcpy( private_key, w->context, PRIVATE_KEY_LEN );
+    }
+
+    if (!hss_check_private_key(private_key)) { 
+        hss_zeroize( private_key, PRIVATE_KEY_LEN );
+        return hss_error_bad_private_key;
+    }
+    return hss_error_none;
+}
+
+/*
+ * This assumes that the private key is already set up, and so only updates
+ * the counter and the checksum
+ */
+enum hss_error_code hss_write_private_key(unsigned char *private_key,
+            struct hss_working_key *w) {
+    return hss_write_private_key_no_w( private_key,
+              PRIVATE_KEY_CHECKSUM + PRIVATE_KEY_CHECKSUM_LEN, 
+              w->read_private_key, w->update_private_key, w->context );
+}
+
+enum hss_error_code hss_write_private_key_no_w(
+            unsigned char *private_key, size_t len,
+            bool (*read_private_key)(unsigned char *private_key,
+                                    size_t len_private_key, void *context),
+            bool (*update_private_key)(unsigned char *private_key,
+                                    size_t len_private_key, void *context),
+            void *context) {
+    /* Update the checksum */
+    compute_private_key_checksum( private_key + PRIVATE_KEY_CHECKSUM,
+                                  private_key );
+
+    /* Write it out */
+    if (update_private_key) {
+        if (!update_private_key( private_key, len, context )) {
+            return hss_error_private_key_write_failed;
+        }
+#if FAULT_HARDENING
+        /* Double check that the write went through */
+        /* Note: read_private_key is null only during the initial write */
+        /* during key generation; errors there don't break security */
+        /* Q: this is relatively cheap; should we do this even if */
+        /*    !FAULT_HARDENING ??? */
+        if (read_private_key) {
+            unsigned char private_key_check[PRIVATE_KEY_LEN];
+            if (!read_private_key( private_key_check, PRIVATE_KEY_LEN,
+                                   context )) {
+                hss_zeroize( private_key_check, PRIVATE_KEY_LEN );
+                return hss_error_private_key_read_failed;
+            }
+            int cmp = memcmp( private_key, private_key_check,
+                              PRIVATE_KEY_LEN );
+            hss_zeroize( private_key_check, PRIVATE_KEY_LEN );
+            if (cmp != 0) {
+                 return hss_error_bad_private_key;
+            }  
+        }
+#endif
+    } else {
+        memcpy( context, private_key, len );
+    }
+
+    return hss_error_none;
+}
 
 /*
  * Internal function to generate the root seed and I value (based on the
