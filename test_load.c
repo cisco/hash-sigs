@@ -9,6 +9,7 @@
 #include "hss.h"
 #include <stdio.h>
 #include <stdarg.h>
+#include <string.h>
 
 static bool rand_1( void *output, size_t len) {
     unsigned char *p = output;
@@ -26,7 +27,7 @@ static bool test_aux( param_set_t lm_setting ) {
     lm[0] = lm_setting;
     lm[1] = LMS_SHA256_N32_H5;
     param_set_t ots[2] = { LMOTS_SHA256_N32_W2, LMOTS_SHA256_N32_W2 };
-    unsigned char priv_key[48];
+    unsigned char priv_key[HSS_MAX_PRIVATE_KEY_LEN];
     unsigned char len_pub_key = hss_get_public_key_len(levels, lm, ots);
     if (!len_pub_key || len_pub_key > HSS_MAX_PUBLIC_KEY_LEN) return false;
     unsigned char pub_key[HSS_MAX_PUBLIC_KEY_LEN];
@@ -55,7 +56,7 @@ static bool test_aux( param_set_t lm_setting ) {
 
         /* Now, load the working key */
         struct hss_working_key *w = hss_load_private_key(
-                      NULL, priv_key, 0, aux_data, aux_size, 0 );
+                      NULL, NULL, priv_key, 0, aux_data, aux_size, 0 );
         if (!w) {
             printf( "Error loading private key\n" );
             free(sig);
@@ -64,8 +65,7 @@ static bool test_aux( param_set_t lm_setting ) {
 
         /* Sign a test message */
         static unsigned char test_message[1] = "a";
-        if (!hss_generate_signature(w, NULL, priv_key,
-                             test_message, sizeof test_message,
+        if (!hss_generate_signature(w, test_message, sizeof test_message,
                              sig, len_sig, 0)) {
             hss_free_working_key(w);
             printf( "Error generating signature\n" );
@@ -91,7 +91,7 @@ static bool test_aux( param_set_t lm_setting ) {
 
 #define NUM_PARM_SETS 4
 
-static bool load_key( int *index, unsigned char priv_key[][48], 
+static bool load_key( int *index, unsigned char priv_key[][HSS_MAX_PRIVATE_KEY_LEN], 
               struct hss_working_key **w, int levels, ...) {
     int i;
     int n = *index;
@@ -137,6 +137,62 @@ failed:
     return false;
 }
 
+/*
+ * This verifies that we detect a corrupted private key
+ */
+#define WHICH_GOOD 18  /* Which byte we don't cause an error with */
+static bool test_corrupt_private_key(void) {
+    unsigned char priv_key[HSS_MAX_PRIVATE_KEY_LEN];
+    unsigned char pub_key[HSS_MAX_PUBLIC_KEY_LEN];
+    param_set_t lm[1] = { LMS_SHA256_N32_H5 };
+    param_set_t ots[1] = { LMOTS_SHA256_N32_W2 };
+    unsigned char aux[1000];
+
+    if (!hss_generate_private_key( rand_1, 1, lm, ots,
+                                   0, priv_key,
+                                   pub_key, sizeof pub_key,
+                                   aux, sizeof aux,
+                                   0 )) {
+        return false;
+    }
+    size_t len_priv_key = hss_get_private_key_len(1, lm, ots);
+    if (!len_priv_key) return false;
+
+    size_t i;
+    for (i=0; i<len_priv_key; i++) {
+        unsigned char priv_key_corrupt[HSS_MAX_PRIVATE_KEY_LEN];
+        memcpy( priv_key_corrupt, priv_key, HSS_MAX_PRIVATE_KEY_LEN );
+        priv_key_corrupt[i] ^= (i - WHICH_GOOD);
+
+        struct hss_extra_info info;
+        hss_init_extra_info( &info );
+
+        struct hss_working_key *w = hss_load_private_key(
+                           0, 0, priv_key_corrupt,
+                           0, aux, sizeof aux, &info );
+        if (w) {
+            hss_free_working_key(w);
+            if (i != WHICH_GOOD) {
+                printf( "Corrupted key not detected\n" );
+                return false;
+            }
+        } else {
+            if (i == WHICH_GOOD) {
+                printf( "Good load failed\n" );
+                return false;
+            }
+            if (hss_extra_info_test_error_code(&info) !=
+                                  hss_error_bad_private_key ) {
+                printf( "Unexpected error type %d\n",
+                                  hss_extra_info_test_error_code(&info) );
+                return false;
+            }
+        }
+    }
+    
+    return true;
+}
+
 bool test_load(bool fast_flag, bool quiet_flag) {
 
     /*
@@ -153,7 +209,7 @@ bool test_load(bool fast_flag, bool quiet_flag) {
      * Verify that we can't load a private key with the wrong parameter set
      * into an already allocated working set
      */
-    unsigned char priv_key[NUM_PARM_SETS][48];
+    unsigned char priv_key[NUM_PARM_SETS][HSS_MAX_PRIVATE_KEY_LEN];
     struct hss_working_key *w[NUM_PARM_SETS] = { 0 };
 
     int index = 0;
@@ -174,7 +230,7 @@ bool test_load(bool fast_flag, bool quiet_flag) {
             bool expected_success = (i == j);
             struct hss_extra_info info = { 0 };
             bool success = hss_generate_working_key(
-                    NULL, priv_key[i], NULL, 0,
+                    NULL, NULL, priv_key[i], NULL, 0,
                     w[j], &info );
             if (success != expected_success) {
                 printf( "Error: for (%d, %d), got success %d\n", i, j, success );
@@ -193,5 +249,7 @@ bool test_load(bool fast_flag, bool quiet_flag) {
 all_done:
     for (i = 0; i<index; i++) hss_free_working_key( w[i] );
 
-    return retval;
+    if (!retval) return retval;
+
+    return test_corrupt_private_key();
 }
