@@ -6,6 +6,11 @@
 #include "hss.h"
 
 /*
+ * This determines whether we do the extra work to catch internal faults
+ */
+#define FAULT_HARDENING  1
+
+/*
  * This is the central internal include file for the functions that make up
  * this subsystem.  It should not be used by applications
  */
@@ -24,12 +29,32 @@
 #define PRIVATE_KEY_INDEX 0
 #define PRIVATE_KEY_INDEX_LEN 8  /* 2**64 signatures should be enough for */
                                  /* everyone */
-#define PRIVATE_KEY_PARAM_SET (PRIVATE_KEY_INDEX + PRIVATE_KEY_INDEX_LEN)
+#define PRIVATE_KEY_CHECKSUM (PRIVATE_KEY_INDEX + PRIVATE_KEY_INDEX_LEN)
+#define PRIVATE_KEY_CHECKSUM_LEN 8
+#define PRIVATE_KEY_MAX   (PRIVATE_KEY_CHECKSUM + PRIVATE_KEY_CHECKSUM_LEN)
+#define PRIVATE_KEY_MAX_LEN 8
+#define PRIVATE_KEY_PARAM_SET (PRIVATE_KEY_MAX + PRIVATE_KEY_MAX_LEN)
 #define PRIVATE_KEY_PARAM_SET_LEN (PARAM_SET_COMPRESS_LEN * MAX_HSS_LEVELS)
 #define PRIVATE_KEY_SEED (PRIVATE_KEY_PARAM_SET + PRIVATE_KEY_PARAM_SET_LEN)
 #define PRIVATE_KEY_SEED_LEN SEED_LEN
 #define PRIVATE_KEY_LEN (PRIVATE_KEY_SEED + PRIVATE_KEY_SEED_LEN) /* That's */
-                                                                /* 48 bytes */
+                                                                /* 64 bytes */
+
+/*
+ * Routines to read/update the private key
+ */
+enum hss_error_code hss_read_private_key(unsigned char *private_key,
+            struct hss_working_key *w);
+enum hss_error_code hss_write_private_key(unsigned char *private_key,
+            struct hss_working_key *w);
+enum hss_error_code hss_write_private_key_no_w(
+            unsigned char *private_key, size_t len,
+            bool (*read_private_key)(unsigned char *private_key,
+                                    size_t len_private_key, void *context),
+            bool (*update_private_key)(unsigned char *private_key,
+                                    size_t len_private_key, void *context),
+            void *context);
+bool hss_check_private_key(const unsigned char *private_key);
 
 struct merkle_level;
 struct hss_working_key {
@@ -42,9 +67,18 @@ struct hss_working_key {
                                   /* Will be higher than the 'current count' */
                                   /* if some signaures are 'reserved' */
     sequence_t max_count;         /* The maximum count we can ever have */
+                                  /* (from the parameter set) */
     unsigned autoreserve;         /* How many signatures to attempt to */
                                   /* reserve if the signing process hits */
                                   /* the end of the current reservation */
+
+    bool (*read_private_key)(     /* Function to read the private key */
+            unsigned char *private_key,
+            size_t len_private_key, void *context);
+    bool (*update_private_key)(   /* Function to write the private key */
+            unsigned char *private_key,
+            size_t len_private_key, void *context);
+    void *context;                /* Context pointer for the above two */
 
     size_t signature_len;         /* The length of the HSS signature */
 
@@ -166,6 +200,9 @@ bool hss_compress_param_set( unsigned char *compressed,
                    const param_set_t *lm_type,
                    const param_set_t *lm_ots_type,
                    size_t len_compressed );
+
+/* Internal function to compute the maximum number of seqno for a parameter set */
+sequence_t hss_get_max_seqno( int levels, const param_set_t *lm_type );
 
 /* Internal function to generate the root seed, I value (based on the */
 /* private seed).  We do this (rather than selecting them  at random) so */
