@@ -394,7 +394,7 @@ static int sign(const char *keyname, char **files) {
     printf( "Loading private key\n" );
     fflush(stdout);
     struct hss_working_key *w = hss_load_private_key(
-             read_private_key, private_key_filename, /* How to load the */
+             read_private_key, update_private_key, private_key_filename, /* How to load the */
                                          /* private key */
              0,                          /* Use minimal memory */
              aux_data, len_aux_data,     /* The auxiliary data */
@@ -454,8 +454,6 @@ static int sign(const char *keyname, char **files) {
         (void)hss_sign_init(
              &ctx,                 /* Incremental signing context */
              w,                    /* Working key */
-             update_private_key,    /* Routine to update the */
-             private_key_filename, /* private key */
              sig, sig_len,         /* Where to place the signature */
              0);                   /* Use the defaults for extra info */
 
