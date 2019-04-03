@@ -234,6 +234,8 @@ static unsigned my_log2(float f) {
 bool hss_generate_working_key(
     bool (*read_private_key)(unsigned char *private_key,
             size_t len_private_key, void *context),
+    bool (*update_private_key)(unsigned char *private_key,
+            size_t len_private_key, void *context),
         void *context,
     const unsigned char *aux_data, size_t len_aux_data,  /* Optional */
     struct hss_working_key *w,
@@ -248,20 +250,36 @@ bool hss_generate_working_key(
     w->status = hss_error_key_uninitialized; /* In case we detect an */
                                              /* error midway */
 
-    if (!read_private_key && !context) {
-        info->error_code = hss_error_no_private_buffer;
-        return false;
+    /* Error checking */
+    if (!read_private_key) {
+        if (update_private_key) {  /* If we don't have a read routine, we */
+                                   /* must not have a write */
+            info->error_code = hss_error_incompatible_functions;
+            return false;
+         
+        }     
+        if (!context) {  /* If we have neither, we have to have a buffer */
+            info->error_code = hss_error_no_private_buffer;
+            return false;
+        }
+    } else {
+        if (!update_private_key) {  /* If we have a read routine, we must */
+                                    /* have a write */
+            info->error_code = hss_error_incompatible_functions;
+            return false;
+         
+        }
     }
+    w->read_private_key = read_private_key;     
+    w->update_private_key = update_private_key;     
+    w->context = context;     
 
     /* Read the private key */
     unsigned char private_key[ PRIVATE_KEY_LEN ];
-    if (read_private_key) {
-        if (!read_private_key( private_key, PRIVATE_KEY_LEN, context)) {
-            info->error_code = hss_error_private_key_read_failed;
-            goto failed;
-        }
-    } else {
-        memcpy( private_key, context, PRIVATE_KEY_LEN );
+    enum hss_error_code e = hss_read_private_key( private_key, w );
+    if (e != hss_error_none) {
+        info->error_code = e;
+        goto failed;
     }
 
     /*
@@ -295,6 +313,24 @@ bool hss_generate_working_key(
             info->error_code = hss_error_incompatible_param_set;
             goto failed;
         }
+
+        /* Get the maximum count, both from the parameter set */
+        /* and the private key */
+        sequence_t max_count_parm_set = hss_get_max_seqno( w->levels,
+                                            lm_type );
+        if (max_count_parm_set == 0) {
+               /* We're passed an unsupported param set */
+            info->error_code = hss_error_internal;
+            goto failed;
+        }
+        sequence_t max_count_key = get_bigendian(
+                    private_key + PRIVATE_KEY_MAX, PRIVATE_KEY_MAX_LEN );
+        if (max_count_key > max_count_parm_set) {
+               /* The max from the key cannot exceed the parm set */
+            info->error_code = hss_error_bad_private_key;
+            goto failed;
+        }
+        w->max_count = max_count_key;
     }
 
     sequence_t current_count = get_bigendian(
@@ -898,6 +934,16 @@ bool hss_generate_working_key(
 
 failed:
     hss_zeroize( private_key, sizeof private_key );
+
+    /* Clear out any seeds we may have placed in the Merkle trees */
+    for (i = 0; i < MAX_HSS_LEVELS; i++) {
+        struct merkle_level *tree = w->tree[i];
+        if (tree) {
+            hss_zeroize(tree->seed, sizeof tree->seed);
+            hss_zeroize(tree->seed_next, sizeof tree->seed_next);
+        }
+    }
+
     return false;
 }
 
