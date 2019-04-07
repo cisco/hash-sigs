@@ -49,7 +49,15 @@ bool hss_sign_init(
         return false;
     }
 
-    struct merkle_level *bottom = w->tree[ w->levels - 1 ];
+    struct merkle_level *bottom = w->tree[0][ w->levels - 1 ];
+#if FAULT_HARDENING
+    struct merkle_level *bottom_redux = w->tree[1][ w->levels - 1 ];
+    if (bottom->current_index != bottom_redux->current_index) {
+        info->error_code = hss_error_internal;
+        return false;
+    }
+#endif
+    
 
     unsigned char I[I_LEN];
     memcpy( I, bottom->I, I_LEN );
@@ -113,7 +121,8 @@ bool hss_sign_update(
     return true;
 }
 
-/* We've added all the pieces of the messages, now do the validation */
+/* We've added all the pieces of the messages, now complete the */
+/* signature genration */
 bool hss_sign_finalize(
     struct hss_sign_inc *ctx,
     const struct hss_working_key *working_key,
@@ -138,8 +147,8 @@ bool hss_sign_finalize(
 
     /* Step through the signature, looking for the place to put the OTS */
     /* signature, and (while we're at it) recovering the I and seed values */
-    const unsigned char *I = working_key->tree[0]->I;
-    const unsigned char *seed = working_key->tree[0]->seed;
+    const unsigned char *I = working_key->tree[0][0]->I;
+    const unsigned char *seed = working_key->tree[0][0]->seed;
         /* Note: we alternate buffers during generation in case */
         /* hss_generate_child_seed_I_value doesn't allow new values to */
         /* overwrite old ones */
@@ -154,21 +163,21 @@ bool hss_sign_finalize(
     int i;
     for (i=0; i<L-1; i++) {
         merkle_index_t q = get_bigendian( signature, 4 );
-        if (q > working_key->tree[i]->max_index) {
+        if (q > working_key->tree[0][i]->max_index) {
             hss_zeroize( seed_buff, sizeof seed_buff );
             return 0;
         }
         hss_generate_child_seed_I_value( seed_buff[i&1], I_buff[i&1],
                                          seed, I, q,
-                                         working_key->tree[i]->lm_type,
-                                         working_key->tree[i]->lm_ots_type );
+                                         working_key->tree[0][i]->lm_type,
+                                         working_key->tree[0][i]->lm_ots_type );
         seed = seed_buff[i&1];
         I = I_buff[i&1];
 
         /* Step to the end of this signed key */
-        signature += lm_get_signature_len( working_key->tree[i]->lm_type,
-                                            working_key->tree[i]->lm_ots_type);
-        signature += lm_get_public_key_len(working_key->tree[i+1]->lm_type);
+        signature += lm_get_signature_len( working_key->tree[0][i]->lm_type,
+                                            working_key->tree[0][i]->lm_ots_type);
+        signature += lm_get_public_key_len(working_key->tree[0][i+1]->lm_type);
     }
 
     /* Now, signature points to where the bottom LMS signature should go */
@@ -185,8 +194,8 @@ bool hss_sign_finalize(
     hss_finalize_hash_context( ctx->h, &ctx->hash_ctx, hash );
 
     /* And the final OTS signature based on that hash */
-    param_set_t lm_type = working_key->tree[i]->lm_type;
-    param_set_t ots_type = working_key->tree[i]->lm_ots_type;
+    param_set_t lm_type = working_key->tree[0][i]->lm_type;
+    param_set_t ots_type = working_key->tree[0][i]->lm_ots_type;
     struct seed_derive derive;
     bool success = hss_seed_derive_init( &derive, lm_type, ots_type,
                           I, seed );
