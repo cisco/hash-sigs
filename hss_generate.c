@@ -296,8 +296,15 @@ bool hss_generate_working_key(
         param_set_t lm_type[MAX_HSS_LEVELS], lm_ots_type[MAX_HSS_LEVELS];
         int i;
         for (i=0; i<w->levels; i++) {
-            lm_type[i] = w->tree[i]->lm_type;
-            lm_ots_type[i] = w->tree[i]->lm_ots_type;
+            lm_type[i] = w->tree[0][i]->lm_type;
+            lm_ots_type[i] = w->tree[0][i]->lm_ots_type;
+#if FAULT_HARDENING
+            if (lm_type[i] != w->tree[1][i]->lm_type ||
+                    lm_ots_type[i] != w->tree[1][i]->lm_ots_type) {
+                info->error_code = hss_error_internal;
+                goto failed;
+            }
+#endif
         }
             
         if (!hss_compress_param_set( compressed, w->levels,
@@ -349,45 +356,62 @@ bool hss_generate_working_key(
     int i;
     sequence_t count = current_count;
     for (i = w->levels - 1; i >= 0 ; i--) {
-        struct merkle_level *tree = w->tree[i];
+        struct merkle_level *tree = w->tree[0][i];
         unsigned index = count & tree->max_index;
         count >>= tree->level;
         tree->current_index = index;
+#if FAULT_HARDENING
+        struct merkle_level *tree_redux = w->tree[1][i];
+        if (tree_redux->max_index != tree->max_index ||
+                tree_redux->level != tree->level) {
+            info->error_code = hss_error_internal;
+            goto failed;
+        }
+        tree_redux->current_index = index;
+#endif
     }
 
     /* Initialize the I values */
     for (i = 0; i < w->levels; i++) {
-        struct merkle_level *tree = w->tree[i];
+        int redux;
+        for (redux = 0; redux <= FAULT_HARDENING; redux++) {
+            if (i == 0 && redux == 1) continue;
 
-        /* Initialize the I, I_next elements */
-        if (i == 0) {
-            /* The root seed, I value is derived from the secret key */
-            hss_generate_root_seed_I_value( tree->seed, tree->I,
-                                            private_key+PRIVATE_KEY_SEED );
-            /* We don't use the I_next value */
-        } else {
-            /* The seed, I is derived from the parent's values */
-
-            /* Where we are in the Merkle tree */
-            struct merkle_level *parent = w->tree[i-1];
-            merkle_index_t index = parent->current_index;
-
-            hss_generate_child_seed_I_value( tree->seed, tree->I,
-                                             parent->seed,  parent->I,
-                                             index, parent->lm_type,
-                                             parent->lm_ots_type );
-            /* The next seed, I is derived from either the parent's I */
-            /* or the parent's next value */
-            if (index == tree->max_index) {
-                hss_generate_child_seed_I_value( tree->seed_next, tree->I_next,
-                                            parent->seed_next,  parent->I_next,
-                                            0, parent->lm_type, 
-                                            parent->lm_ots_type);
+            struct merkle_level *tree = w->tree[redux][i];
+    
+            /* Initialize the I, I_next elements */
+            if (i == 0) {
+                /* The root seed, I value is derived from the secret key */
+                hss_generate_root_seed_I_value( tree->seed, tree->I,
+                                                private_key+PRIVATE_KEY_SEED );
+                /* We don't use the I_next value */
             } else {
-                hss_generate_child_seed_I_value( tree->seed_next, tree->I_next,
-                                            parent->seed,  parent->I,
-                                            index+1, parent->lm_type,
-                                            parent->lm_ots_type);
+                /* The seed, I is derived from the parent's values */
+    
+                /* Where we are in the Merkle tree */
+                struct merkle_level *parent = w->tree[redux][i-1];
+                merkle_index_t index = parent->current_index;
+    
+                hss_generate_child_seed_I_value( tree->seed, tree->I,
+                                                 parent->seed,  parent->I,
+                                                 index, parent->lm_type,
+                                                 parent->lm_ots_type );
+                /* The next seed, I is derived from either the parent's I */
+                /* or the parent's next value */
+                if (index == tree->max_index) {
+                    hss_generate_child_seed_I_value( tree->seed_next,
+                                                tree->I_next,
+                                                parent->seed_next,
+                                                parent->I_next,
+                                                0, parent->lm_type, 
+                                                parent->lm_ots_type);
+                } else {
+                    hss_generate_child_seed_I_value( tree->seed_next,
+                                                tree->I_next,
+                                                parent->seed,  parent->I,
+                                                index+1, parent->lm_type,
+                                                parent->lm_ots_type);
+                }
             }
         }
     }
@@ -396,7 +420,7 @@ bool hss_generate_working_key(
     /* viable aux structure */
     struct expanded_aux_data *expanded_aux, temp_aux;
     expanded_aux = hss_expand_aux_data( aux_data, len_aux_data, &temp_aux,
-                                        w->tree[0]->hash_size, w );
+                                        w->tree[0][0]->hash_size, w );
 
     /*
      * Now, build all the subtrees within the tree
@@ -407,199 +431,222 @@ bool hss_generate_working_key(
      */
         /* There are enough structures in this array to handle the maximum */
         /* number of orders we'll ever see */
-    struct init_order order[MAX_HSS_LEVELS * MAX_SUBLEVELS * NUM_SUBTREE];
+    struct init_order order[MAX_HSS_LEVELS * MAX_SUBLEVELS * NUM_SUBTREE *
+                            (1 + FAULT_HARDENING) ];
     struct init_order *p_order = order;
     int count_order = 0;
 
     /* Step through the levels, and for each Merkle tree, compile a list of */
     /* the orders to initialize the bottoms of the subtrees that we'll need */
     for (i = w->levels - 1; i >= 0 ; i--) {
-        struct merkle_level *tree = w->tree[i];
-        unsigned hash_size = tree->hash_size;
-            /* The current count within this tree */
-        merkle_index_t tree_count = tree->current_index;
-            /* The index of the leaf we're on */
-        merkle_index_t leaf_index = tree_count;
-
-        /* Generate the active subtrees */
-        int j;
-        int bot_level_subtree = tree->level;  /* The level of the bottom of */
-                                              /* the subtree */
-        unsigned char *active_prev_node = 0;
-        unsigned char *next_prev_node = 0;
-        for (j=tree->sublevels-1; j>=0; j--) {
-                /* The height of this subtree */
-            int h_subtree = (j == 0) ? tree->top_subtree_size :
-                                       tree->subtree_size;
-
-            /* Initialize the active tree */
-            struct subtree *active = tree->subtree[j][ACTIVE_TREE];
-
-                /* Total number of leaf nodes below this subtree */
-            merkle_index_t size_subtree = (merkle_index_t)1 <<
-                                             (h_subtree + active->levels_below);
-            /* Fill in the leaf index that's on the left side of this subtree */
-                /* This is the index of the leaf that we did when we first */
-                /* entered the active subtree */
-            merkle_index_t left_leaf = leaf_index & ~(size_subtree - 1);
-                /* This is the number of leaves we've done in this subtree */
-            merkle_index_t subtree_count = leaf_index - left_leaf;
-                /* If we're not in the bottom tree, it's possible that the */
-                /* update process will miss the very first update before we */
-                /* need to sign.  To account for that, generate one more */
-                /* node than what our current count would suggest */
-            if (i != w->levels - 1) {
-                subtree_count++;
-            }
-            active->current_index = 0;
-            active->left_leaf = left_leaf;
-            merkle_index_t num_bottom_nodes = (merkle_index_t)1 << h_subtree;
-
-            /* Check if we have aux data at this level */
-            int already_computed_lower = 0;
-            if (i == 0) {
-                merkle_index_t lower_index = num_bottom_nodes-1;
-                merkle_index_t node_offset = active->left_leaf>>active->levels_below;
-                if (hss_extract_aux_data(expanded_aux, active->level+h_subtree,
-                             w, &active->nodes[ hash_size * lower_index ],
-                             node_offset, num_bottom_nodes)) {
-                    /* We do have it precomputed in our aux data */
-                    already_computed_lower = 1;
+        int redux;
+        for (redux = 0; redux <= FAULT_HARDENING; redux++) {
+            if (i == 0 && redux == 1) continue;
+            struct merkle_level *tree = w->tree[redux][i];
+            unsigned hash_size = tree->hash_size;
+                /* The current count within this tree */
+            merkle_index_t tree_count = tree->current_index;
+                /* The index of the leaf we're on */
+            merkle_index_t leaf_index = tree_count;
+    
+            /* Generate the active subtrees */
+            int j;
+            int bot_level_subtree = tree->level;  /* The level of the */
+                                        /* bottom of the subtree */
+            unsigned char *active_prev_node = 0;
+            unsigned char *next_prev_node = 0;
+            for (j=tree->sublevels-1; j>=0; j--) {
+                    /* The height of this subtree */
+                int h_subtree = (j == 0) ? tree->top_subtree_size :
+                                           tree->subtree_size;
+    
+                /* Initialize the active tree */
+                struct subtree *active = tree->subtree[j][ACTIVE_TREE];
+    
+                    /* Total number of leaf nodes below this subtree */
+                merkle_index_t size_subtree = (merkle_index_t)1 <<
+                                         (h_subtree + active->levels_below);
+                /* Fill in the leaf index that's on the left side of this */
+               /* subtree */
+                    /* This is the index of the leaf that we did when we */
+                    /* first entered the active subtree */
+                merkle_index_t left_leaf = leaf_index & ~(size_subtree - 1);
+                    /* This is the number of leaves we've done in this */
+                    /* subtree */
+                merkle_index_t subtree_count = leaf_index - left_leaf;
+                    /* If we're not in the bottom tree, it's possible that */
+                    /* the update process will miss the very first update */
+                    /* before we need to sign.  To account for that, */
+                    /* generate one more node than what our current count */
+                    /* would suggest */
+                if (i != w->levels - 1) {
+                    subtree_count++;
                 }
-            }
-            /* No aux data at this level; schedule the bottom row to be computed */
-            /* Schedule the creation of the entire active tree */
-            p_order->tree = tree;
-            p_order->subtree = active;
-            p_order->count_nodes = (merkle_index_t)1 << h_subtree; /* All */
-                                                /* the nodes in this subtree */
-            p_order->next_tree = 0;
-                /* Mark the root we inherented from the subtree just below us */
-            p_order->prev_node = already_computed_lower ? NULL : active_prev_node;
-            p_order->prev_index = (tree->current_index >> active->levels_below) & (num_bottom_nodes-1);
-
-            p_order->already_computed_lower = already_computed_lower;
-            p_order++; count_order++;
-
-            /* For the next subtree, here's where our root will be */
-            active_prev_node = &active->nodes[0];
-
-            /* And initialize the building tree, assuming there is one, and */
-            /* assuming that the active subtree isn't at the right edge of */
-            /* the Merkle tree */
-            if (j > 0 && (leaf_index + size_subtree <= tree->max_index )) {
-                struct subtree *building = tree->subtree[j][BUILDING_TREE];
-
-                    /* The number of leaves that make up one bottom node */
-                    /* of this subtree */
-                merkle_index_t size_below_tree = (merkle_index_t)1 << building->levels_below;
-                    /* We need to initialize the building tree current index */
-                    /* to a value at least as large as subtree_count */
-                    /* We'd prefer not to have to specificallly initialize */
-                    /* the stack, and so we round up to the next place the */
-                    /* stack is empty */
-                merkle_index_t building_count =
-                              (subtree_count + size_below_tree - 1) &
-                                                    ~(size_below_tree - 1);
-                    /* # of bottom level nodes we've building right now */
-                merkle_index_t num_nodes = building_count >> building->levels_below;
-                building->left_leaf = left_leaf + size_subtree;
-                building->current_index = building_count;
-
-                /* Check if this is already in the aux data */ 
-                already_computed_lower = 0;
+                active->current_index = 0;
+                active->left_leaf = left_leaf;
+                merkle_index_t num_bottom_nodes =
+                                            (merkle_index_t)1 << h_subtree;
+    
+                /* Check if we have aux data at this level */
+                int already_computed_lower = 0;
                 if (i == 0) {
                     merkle_index_t lower_index = num_bottom_nodes-1;
-                    merkle_index_t node_offset = building->left_leaf>>building->levels_below;
-                    if (hss_extract_aux_data(expanded_aux, building->level+h_subtree,
-                             w, &building->nodes[ hash_size * lower_index ],
-                             node_offset, num_nodes)) {
+                    merkle_index_t node_offset =
+                                   active->left_leaf>>active->levels_below;
+                    if (hss_extract_aux_data(expanded_aux,
+                                 active->level+h_subtree,
+                                 w, &active->nodes[ hash_size * lower_index ],
+                                 node_offset, num_bottom_nodes)) {
                         /* We do have it precomputed in our aux data */
                         already_computed_lower = 1;
                     }
                 }
-
-                /* Schedule the creation of the subset of the building tree */
+                /* No aux data at this level; schedule the bottom row to be */
+                /* computed. */
+                /* Schedule the creation of the entire active tree */
                 p_order->tree = tree;
-                p_order->subtree = building;
-                    /* # of nodes to construct */
-                p_order->count_nodes = num_nodes;
+                p_order->subtree = active;
+                p_order->count_nodes = (merkle_index_t)1 << h_subtree;
+                                        /* All *the nodes in this subtree */
                 p_order->next_tree = 0;
-                    /* We generally can't use the prev_node optimization */
-                p_order->prev_node = NULL;
-                p_order->prev_index = 0;
 
+                /* Mark the root we inhereted from the subtree just below us */
+                p_order->prev_node = already_computed_lower ? NULL : active_prev_node;
+                p_order->prev_index = (tree->current_index >>
+                                 active->levels_below) & (num_bottom_nodes-1);
+    
                 p_order->already_computed_lower = already_computed_lower;
                 p_order++; count_order++;
-            } else if (j > 0) {
-                tree->subtree[j][BUILDING_TREE]->current_index = 0;
-            }
-
-            /* And the NEXT_TREE (which is always left-aligned) */
-            if (i > 0) {
-                struct subtree *next = tree->subtree[j][NEXT_TREE];
-                next->left_leaf = 0;
-                merkle_index_t leaf_size =
-                                     (merkle_index_t)1 << next->levels_below;
-
-                merkle_index_t next_index = tree_count;
-                /* If we're not in the bottom tree, it's possible that the */
-                /* update process will miss the very first update before we */
-                /* need to sign.  To account for that, potetially generate */
-                /* one more node than what our current count would suggest */
-                if (i != w->levels - 1) {
-                    next_index++;
-                }
-
-                /* Make next_index the # of leaves we'll need to process to */
-                /* forward this NEXT subtree to this state */
-                next_index = (next_index + leaf_size - 1)/leaf_size;
-
-                    /* This is set if we have a previous subtree */
-                merkle_index_t prev_subtree = (next->levels_below ? 1 : 0);
-                merkle_index_t num_nodes;
-                unsigned char *next_next_node = 0;
-
-                /* If next_index == 1, then if we're on a nonbottom subtree */
-                /* the previous subtree is still building (and so we */
-                /* needn't do anything).  The exception is if we're on the */
-                /* bottom level, then there is no subtree, and so we still */
-                /* need to build the initial left leaf */
-                if (next_index <= prev_subtree) {
-                    /* We're not started on this subtree yet */
-                    next->current_index = 0;
-                    num_nodes = 0;
-                } else if (next_index < num_bottom_nodes) {
-                    /* We're in the middle of building this tree */
-                    next->current_index = next_index << next->levels_below;
-                    num_nodes = next_index;
-                } else {
-                    /* We've completed building this tree */
-                        /* How we note "we've generated this entire subtree" */
-                    next->current_index = MAX_SUBINDEX;
-                    num_nodes = num_bottom_nodes;
-                        /* We've generated this entire tree; allow it to */
-                        /* be inhereited for the next one */
-                    next_next_node = &next->nodes[0];
-                }
-                if (num_nodes > 0) {
-                    /* Schedule the creation of these nodes */
+    
+                /* For the next subtree, here's where our root will be */
+                active_prev_node = &active->nodes[0];
+    
+                /* And initialize the building tree, assuming there is one, */
+                /* and  assuming that the active subtree isn't at the right */
+                /* edge of the Merkle tree */
+                if (j > 0 && (leaf_index + size_subtree <= tree->max_index )) {
+                    struct subtree *building = tree->subtree[j][BUILDING_TREE];
+    
+                        /* The number of leaves that make up one bottom node */
+                        /* of this subtree */
+                    merkle_index_t size_below_tree =
+                                (merkle_index_t)1 << building->levels_below;
+                        /* We need to initialize the building tree current */
+                        /* index to a value at least as large as */
+                        /* subtree_count */
+                        /* We'd prefer not to have to specificallly */
+                        /* initialize the stack, and so we round up to the */
+                        /* next place the stack is empty */
+                    merkle_index_t building_count =
+                                  (subtree_count + size_below_tree - 1) &
+                                                        ~(size_below_tree - 1);
+                        /* # of bottom level nodes we've building right now */
+                    merkle_index_t num_nodes =
+                                     building_count >> building->levels_below;
+                    building->left_leaf = left_leaf + size_subtree;
+                    building->current_index = building_count;
+    
+                    /* Check if this is already in the aux data */ 
+                    already_computed_lower = 0;
+                    if (i == 0) {
+                        merkle_index_t lower_index = num_bottom_nodes-1;
+                        merkle_index_t node_offset =
+                                  building->left_leaf>>building->levels_below;
+                        if (hss_extract_aux_data(expanded_aux,
+                                 building->level+h_subtree,
+                                 w, &building->nodes[ hash_size * lower_index ],
+                                 node_offset, num_nodes)) {
+                            /* We do have it precomputed in our aux data */
+                            already_computed_lower = 1;
+                        }
+                    }
+    
+                    /* Schedule the creation of the subset of the building */
+                    /* tree */
                     p_order->tree = tree;
-                    p_order->subtree = next;
+                    p_order->subtree = building;
                         /* # of nodes to construct */
                     p_order->count_nodes = num_nodes;
-                    p_order->next_tree = 1;
-                    p_order->prev_node = next_prev_node;
+                    p_order->next_tree = 0;
+                        /* We generally can't use the prev_node optimization */
+                    p_order->prev_node = NULL;
                     p_order->prev_index = 0;
-
-                    p_order->already_computed_lower = 0;
+    
+                    p_order->already_computed_lower = already_computed_lower;
                     p_order++; count_order++;
+                } else if (j > 0) {
+                    tree->subtree[j][BUILDING_TREE]->current_index = 0;
                 }
-                next_prev_node = next_next_node;
-            }
+    
+                /* And the NEXT_TREE (which is always left-aligned) */
+                if (i > 0) {
+                    struct subtree *next = tree->subtree[j][NEXT_TREE];
+                    next->left_leaf = 0;
+                    merkle_index_t leaf_size =
+                                     (merkle_index_t)1 << next->levels_below;
+    
+                    merkle_index_t next_index = tree_count;
+                    /* If we're not in the bottom tree, it's possible that */
+                    /* the update process will miss the very first update */
+                    /* before we need to sign.  To account for that, */
+                    /* potentially generate one more node than what our */
+                    /* current count would suggest */
+                    if (i != w->levels - 1) {
+                        next_index++;
+                    }
+    
+                    /* Make next_index the # of leaves we'll need to */
+                    /* process to forward this NEXT subtree to this state */
+                    next_index = (next_index + leaf_size - 1)/leaf_size;
+    
+                        /* This is set if we have a previous subtree */
+                    merkle_index_t prev_subtree = (next->levels_below ? 1 : 0);
+                    merkle_index_t num_nodes;
+                    unsigned char *next_next_node = 0;
+    
+                    /* If next_index == 1, then if we're on a nonbottom */
+                    /* subtree the previous subtree is still building (and */
+                    /* so we needn't do anything).  The exception is if */
+                    /* we're on the bottom level, then there is no */
+                    /* subtree, and so we still need to build the initial */
+                    /* left leaf */
+                    if (next_index <= prev_subtree) {
+                        /* We're not started on this subtree yet */
+                        next->current_index = 0;
+                        num_nodes = 0;
+                    } else if (next_index < num_bottom_nodes) {
+                        /* We're in the middle of building this tree */
+                        next->current_index = next_index << next->levels_below;
+                        num_nodes = next_index;
+                    } else {
+                        /* We've completed building this tree */
 
-            bot_level_subtree -= h_subtree;
-         }
+                        /* How we note "we've generated this entire subtree" */
+                        next->current_index = MAX_SUBINDEX;
+                        num_nodes = num_bottom_nodes;
+                            /* We've generated this entire tree; allow it to */
+                            /* be inhereited for the next one */
+                        next_next_node = &next->nodes[0];
+                    }
+                    if (num_nodes > 0) {
+                        /* Schedule the creation of these nodes */
+                        p_order->tree = tree;
+                        p_order->subtree = next;
+                            /* # of nodes to construct */
+                        p_order->count_nodes = num_nodes;
+                        p_order->next_tree = 1;
+                        p_order->prev_node = next_prev_node;
+                        p_order->prev_index = 0;
+    
+                        p_order->already_computed_lower = 0;
+                        p_order++; count_order++;
+                    }
+                    next_prev_node = next_next_node;
+                }
+    
+                bot_level_subtree -= h_subtree;
+             }
+        }
     }
 
 #if DO_FLOATING_POINT
@@ -912,11 +959,30 @@ bool hss_generate_working_key(
      */
     for (i = 1; i < w->levels; i++) {
         if (!hss_create_signed_public_key( w->signed_pk[i], w->siglen[i-1],
-                                       w->tree[i], w->tree[i-1], w )) {
+                                       w->tree[0][i], w->tree[0][i-1], w )) {
             info->error_code = hss_error_internal; /* Really shouldn't */
                                                    /* happen */
             goto failed;
         }
+#if FAULT_HARDENING
+        /* Now double check the signature we just made */
+        if (!hss_doublecheck_signed_public_key( w->signed_pk[i],
+                                       w->siglen[i-1],
+                                       w->tree[1][i], w->tree[1][i-1], w )) {
+            info->error_code = hss_error_fault_detected;
+            goto failed;
+        }
+
+#endif
+        /* We generated a signature, mark it from the parent */
+        hss_step_tree( w->tree[0][i-1] );
+
+#if FAULT_HARDENING
+        /* Also mark it from the redundent tree (if it's not top-level) */
+        if (i > 1) {
+            hss_step_tree( w->tree[1][i-1] );
+        }
+#endif
     }
     hss_zeroize( private_key, sizeof private_key );
 
@@ -925,7 +991,10 @@ bool hss_generate_working_key(
      * initialized them as already having the first update)
      */
     for (i = 0; i < w->levels - 1; i++) {
-        w->tree[i]->update_count = UPDATE_DONE;
+        int redux;
+        for (redux = 0; redux <= FAULT_HARDENING; redux++) {
+            w->tree[redux][i]->update_count = UPDATE_DONE;
+        }
     }
 
     w->status = hss_error_none; /* This working key has been officially */
@@ -937,10 +1006,13 @@ failed:
 
     /* Clear out any seeds we may have placed in the Merkle trees */
     for (i = 0; i < MAX_HSS_LEVELS; i++) {
-        struct merkle_level *tree = w->tree[i];
-        if (tree) {
-            hss_zeroize(tree->seed, sizeof tree->seed);
-            hss_zeroize(tree->seed_next, sizeof tree->seed_next);
+        int redux;
+        for (redux = 0; redux <= FAULT_HARDENING; redux++) {
+            struct merkle_level *tree = w->tree[redux][i];
+            if (tree) {
+                hss_zeroize(tree->seed, sizeof tree->seed);
+                hss_zeroize(tree->seed_next, sizeof tree->seed_next);
+            }
         }
     }
 
