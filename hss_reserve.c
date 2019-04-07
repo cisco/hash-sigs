@@ -140,11 +140,18 @@ bool hss_reserve_signature(
     sequence_t current_count = 0;
     int i;
     for (i = 0; i<w->levels; i++) {
-        struct merkle_level *tree = w->tree[i];
+        struct merkle_level *tree = w->tree[0][i];
             /* -1 because the current_index counts the signatures to the */
             /* current next level */
         current_count = (current_count << tree->level) +
                                                   tree->current_index - 1;
+#if FAULT_HARDENING
+        struct merkle_level *tree_redux = w->tree[1][i];
+        if (tree->level != tree_redux->level ||
+                  tree->current_index != tree_redux->current_index) {
+            return false;  /* Mismatch between primage and redundant trees */
+        }
+#endif
     }
     current_count += 1;   /* The bottom-most tree isn't advanced */
 
