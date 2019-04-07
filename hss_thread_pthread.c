@@ -15,11 +15,7 @@
  * implementation handy to test it
  */
 
-#define MAX_THREAD 16   /* Number try to create more than 16 threads, no */
-                        /* matter what the application tries to tell us */
-#define DEFAULT_THREAD 16 /* The number of threads to run if the */
-                        /* application doesn't tell us otherwise (e.g. */
-                        /* passes in 0) */
+#include "config.h"
 
 #define MIN_DETAIL 16   /* So the alignment kludge we do doesn't waste space */
 
