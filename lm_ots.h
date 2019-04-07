@@ -55,6 +55,18 @@ bool lm_ots_generate_signature(
     const void *message, size_t message_len, bool prehashed,
     unsigned char *signature, size_t signature_len);
 
+/*
+ * Same, but instead of writing the signature, we verify that we're written
+ * is precisely when we expect
+ */
+bool lm_ots_doublecheck_signature(
+    param_set_t lm_ots_type,
+    const unsigned char *I,
+    merkle_index_t q,
+    struct seed_derive *seed,
+    const void *message, size_t message_len,
+    const unsigned char *signature, size_t signature_len);
+
 /* The include file for the verification routine */
 #include "lm_ots_verify.h"
 
