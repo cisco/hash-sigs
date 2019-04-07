@@ -165,3 +165,83 @@ bool lm_ots_generate_signature(
 
     return true;
 }
+
+#if FAULT_HARDENING
+bool lm_ots_doublecheck_signature(
+    param_set_t lm_ots_type,
+    const unsigned char *I, /* Public key identifier */
+    merkle_index_t q,       /* Diversification string, 4 bytes value */
+    struct seed_derive *seed,
+    const void *message, size_t message_len,
+    const unsigned char *signature, size_t signature_len) {
+
+    /* Look up the parameter set */
+    unsigned h, n, w, p, ls;
+    if (!lm_ots_look_up_parameter_set( lm_ots_type, &h, &n, &w, &p, &ls ))
+        return false;
+
+    /* Check if we have enough room */
+    if (signature_len < 4 + n + p*n) return false;
+
+    /* Check the parameter set to the signature */
+    if (lm_ots_type != get_bigendian( signature, 4 )) return false;
+
+    union hash_context ctx;
+    /* Select the randomizer */
+    unsigned char randomizer[ MAX_HASH ];
+    lm_ots_generate_randomizer( randomizer, n, seed);
+    if (0 != memcmp( randomizer, signature+4, n )) {
+        goto failed;
+    }
+
+    /* Compute the initial hash */
+    unsigned char Q[MAX_HASH + 2];
+    hss_init_hash_context(h, &ctx);
+
+    /* First, we hash the message prefix */
+    unsigned char prefix[MESG_PREFIX_MAXLEN];
+    memcpy( prefix + MESG_I, I, I_LEN );
+    put_bigendian( prefix + MESG_Q, q, 4 );
+    SET_D( prefix + MESG_D, D_MESG );
+    memcpy( prefix + MESG_C, randomizer, n );
+    hss_update_hash_context(h, &ctx, prefix, MESG_PREFIX_LEN(n) );
+
+        /* Then, the message */
+    hss_update_hash_context(h, &ctx, message, message_len );
+    hss_finalize_hash_context( h, &ctx, Q );
+
+    /* Append the checksum to the randomized hash */
+    put_bigendian( &Q[n], lm_ots_compute_checksum(Q, n, w, ls), 2 );
+
+    int i;
+    unsigned char tmp[ITER_MAX_LEN];
+
+    /* Preset the parts of tmp that don't change */
+    memcpy( tmp + ITER_I, I, I_LEN );
+    put_bigendian( tmp + ITER_Q, q, 4 );
+    
+    hss_seed_derive_set_j( seed, 0 );
+    for (i=0; i<p; i++) {
+        put_bigendian( tmp + ITER_K, i, 2 );
+        hss_seed_derive( tmp + ITER_PREV, seed, i<p-1 );
+        unsigned a = lm_ots_coef( Q, i, w );
+        unsigned j;
+        for (j=0; j<a; j++) {
+            tmp[ITER_J] = j;
+            hss_hash_ctx( tmp + ITER_PREV, h, &ctx, tmp, ITER_LEN(n) );
+        }
+        if (0 != memcmp( &signature[ 4 + n + n*i ], tmp + ITER_PREV, n )) {
+            goto failed;
+        }
+    }
+
+    hss_zeroize( &ctx, sizeof ctx );
+
+    return true;
+
+failed:
+    hss_zeroize( &ctx, sizeof ctx );
+
+    return false;
+}
+#endif
