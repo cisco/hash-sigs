@@ -3,23 +3,7 @@
 
 #include "common_defs.h"
 
-/*
- * This defines what seed generation logic we use
- * Note that changing these parameters will change the mapping
- * between private keys.
- *
- * 0 -> We generate seeds using the process defined in Appendix A of the draft
- * 1 -> We use a side channel resistant process, never using any single secret
- *      seed in more than a defined number of distinct hashes
- */
-#define SECRET_METHOD 1
-
-/*
- * If we're using the side channel resistant method, this defines the max
- * number of times we'll use a single secret.  Note that this is the log2
- * of the max number of times, and so 3 means 'no more than 8 times'
- */
-#define SECRET_MAX 4  /* Never use a seed more than 16 times */
+#include "config.h"
 
 #if SECRET_MAX > 31
 #error The code is not designed for a SECRET_MAX that high
