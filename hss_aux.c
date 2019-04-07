@@ -143,9 +143,9 @@ struct expanded_aux_data *hss_expand_aux_data( const unsigned char *aux_data,
         /* Now, MAC the entire aux file */
         union hash_context ctx;
         unsigned char key[ MAX_HASH ];
-        compute_seed_derive( key, w->tree[0]->h, w->working_key_seed, &ctx );
+        compute_seed_derive( key, w->tree[0][0]->h, w->working_key_seed, &ctx );
         unsigned char expected_mac[ MAX_HASH ];
-        compute_hmac( expected_mac, w->tree[0]->h, size_hash, &ctx, key,
+        compute_hmac( expected_mac, w->tree[0][0]->h, size_hash, &ctx, key,
                           orig_aux_data, aux_data - orig_aux_data );
         hss_zeroize( key, size_hash );
         hss_zeroize( &ctx, sizeof ctx );
@@ -326,7 +326,7 @@ bool hss_extract_aux_data(const struct expanded_aux_data *aux, unsigned level,
     if (!aux) return false;              /* No aux data */
     if (!aux->data[level]) return false; /* We don't have that specific */
                                      /* level saved */
-    unsigned hash_size = w->tree[0]->hash_size;
+    unsigned hash_size = w->tree[0][0]->hash_size;
 
     /* We do have the data; copy it to the destination */
     memcpy( dest,
