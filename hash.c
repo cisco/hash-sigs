@@ -2,10 +2,7 @@
 #include "hash.h"
 #include "sha256.h"
 #include "hss_zeroize.h"
-
-#define ALLOW_VERBOSE 0  /* 1 -> we allow the dumping of intermediate */
-                         /*      states.  Useful for debugging; horrid */
-                         /*      for security */
+#include "config.h"
 
 /*
  * This is the file that implements the hashing APIs we use internally.
