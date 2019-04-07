@@ -189,8 +189,12 @@ signed long initial_mem_target = mem_target; /* DEBUG HACK */
         w->signed_pk[i] = NULL;
     }
     for (i=0; i<MAX_HSS_LEVELS; i++) {
-        w->tree[i] = NULL;
+        int redux;
+        for (redux = 0; redux <= FAULT_HARDENING; redux++) {
+             w->tree[redux][i] = NULL;
+        }
     }
+
     w->stack = NULL;
 
     /* Allocate all the memory for the level signatures */
@@ -297,6 +301,13 @@ signed long initial_mem_target = mem_target; /* DEBUG HACK */
         size_t mem = compute_level_memory_usage(i, subtree,
                        level_height[i], hash_size[i], &subtree_levels[i],
                         &stack_used );
+#if FAULT_HARDENING
+        if (i > 0) {
+            /* Non-top levels are replicated; hence double the cost */
+            stack_used *= 2;
+            mem *= 2;
+        }
+#endif
 
         mem_target -= mem;
         stack_usage += stack_used;
@@ -357,6 +368,14 @@ signed long initial_mem_target = mem_target; /* DEBUG HACK */
         signed long mem = compute_level_memory_usage(i, j,
                        level_height[i], hash_size[i], &subtree_levels[i],
                        &stack_used );
+#if FAULT_HARDENING
+        if (levels > 1) {
+            /* If we use more than one level, this bottom level */
+            /* is replicated */
+            stack_used *= 2;
+            mem *= 2;
+        }
+#endif
             /* # of sublevels this would have */
         unsigned sub_levels = (level_height[i] + j - 1) / j;
 
@@ -437,69 +456,82 @@ printf( "Allocation = %ld\n", initial_mem_target - mem_target + best_mem ); /* D
      * allocations
      */
     for (i = 0; i<levels; i++) {
-        struct merkle_level *tree = malloc( sizeof *tree );
-        if (!tree) { 
-            hss_free_working_key(w);
-            info->error_code = hss_error_out_of_memory;
-            return 0;
-        }
-        unsigned h0 = level_height[i];
-        tree->level = h0;
-        tree->h = level_hash[i];
-        tree->hash_size = hash_size[i];
-        tree->lm_type = lm_type[i];
-        tree->lm_ots_type = lm_ots_type[i];
-        /* We'll initialize current_index from the private key */
-        tree->max_index = (1L << tree->level) - 1;
-        tree->sublevels = subtree_levels[i];
-        tree->subtree_size = subtree_size[i];
-        unsigned top_subtree_size = h0 - (subtree_levels[i]-1)*subtree_size[i];
-        tree->top_subtree_size = top_subtree_size;
-
-        unsigned j, k;
-        for (j=0; j<MAX_SUBLEVELS; j++)
-            for (k=0; k<NUM_SUBTREE; k++)
-                tree->subtree[j][k] = NULL;
-        w->tree[i] = tree;
-
-        unsigned subtree_level = 0;
-        unsigned levels_below = h0;
-        for (j=0; j<subtree_levels[i]; j++) {
-            /* The height of the subtrees at this level  */
-            unsigned height = (j == 0) ? top_subtree_size : subtree_size[i];
-            levels_below -= height;
-
-            for (k=0; k<NUM_SUBTREE; k++) {
-                /* The root subtree doesn't get a 'building subtree' */
-                if (j == 0 && k == BUILDING_TREE) continue;
-                /* The subtrees in the topmost tree don't get a */
-                /* 'next subtree' */
-                if (k == NEXT_TREE && i == 0) continue;
-
-                struct subtree *s = malloc( sizeof *s + hash_size[i] *
-                                               (((size_t)2<<height)-1));
-                if (!s) {
-                    hss_free_working_key(w);
-                    info->error_code = hss_error_out_of_memory;
-                    return 0;
-                }
-
-                s->level = subtree_level;
-                s->levels_below = levels_below;
-                tree->subtree[j][k] = s;
-                if (k == ACTIVE_TREE) {
-                    /* Active trees don't need no stack */
-                    s->stack = NULL;
-                } else if (levels_below == 0) {
-                    /* Bottom level subtrees don't need no stack */
-                    s->stack = NULL;
-                } else {
-                    s->stack = &stack[stack_index];
-                    stack_index += hash_size[i] * levels_below;
-                }
+        int redux;
+        for (redux = 0; redux <= FAULT_HARDENING; redux++) {
+#if FAULT_HARDENING
+            if (i == 0 && redux == 1) {
+                /* Special case; we don't have a redundent tree for the */
+                /* top level */
+                w->tree[1][0] = w->tree[0][0];
+                continue;
             }
-
-            subtree_level += height;
+#endif
+            struct merkle_level *tree = malloc( sizeof *tree );
+            if (!tree) { 
+                hss_free_working_key(w);
+                info->error_code = hss_error_out_of_memory;
+                return 0;
+            }
+            unsigned h0 = level_height[i];
+            tree->level = h0;
+            tree->h = level_hash[i];
+            tree->hash_size = hash_size[i];
+            tree->lm_type = lm_type[i];
+            tree->lm_ots_type = lm_ots_type[i];
+            /* We'll initialize current_index from the private key */
+            tree->max_index = (1L << tree->level) - 1;
+            tree->sublevels = subtree_levels[i];
+            tree->subtree_size = subtree_size[i];
+            unsigned top_subtree_size =
+                             h0 - (subtree_levels[i]-1)*subtree_size[i];
+            tree->top_subtree_size = top_subtree_size;
+    
+            unsigned j, k;
+            for (j=0; j<MAX_SUBLEVELS; j++)
+                for (k=0; k<NUM_SUBTREE; k++)
+                    tree->subtree[j][k] = NULL;
+            w->tree[redux][i] = tree;
+    
+            unsigned subtree_level = 0;
+            unsigned levels_below = h0;
+            for (j=0; j<subtree_levels[i]; j++) {
+                /* The height of the subtrees at this level  */
+                unsigned height = (j == 0) ? top_subtree_size :
+                                             subtree_size[i];
+                levels_below -= height;
+    
+                for (k=0; k<NUM_SUBTREE; k++) {
+                    /* The root subtree doesn't get a 'building subtree' */
+                    if (j == 0 && k == BUILDING_TREE) continue;
+                    /* The subtrees in the topmost tree don't get a */
+                    /* 'next subtree' */
+                    if (k == NEXT_TREE && i == 0) continue;
+    
+                    struct subtree *s = malloc( sizeof *s + hash_size[i] *
+                                                   (((size_t)2<<height)-1));
+                    if (!s) {
+                        hss_free_working_key(w);
+                        info->error_code = hss_error_out_of_memory;
+                        return 0;
+                    }
+    
+                    s->level = subtree_level;
+                    s->levels_below = levels_below;
+                    tree->subtree[j][k] = s;
+                    if (k == ACTIVE_TREE) {
+                        /* Active trees don't need no stack */
+                        s->stack = NULL;
+                    } else if (levels_below == 0) {
+                        /* Bottom level subtrees don't need no stack */
+                        s->stack = NULL;
+                    } else {
+                        s->stack = &stack[stack_index];
+                        stack_index += hash_size[i] * levels_below;
+                    }
+                }
+    
+                subtree_level += height;
+            }
         }
     }
 
@@ -514,20 +546,28 @@ printf( "Allocation = %ld\n", initial_mem_target - mem_target + best_mem ); /* D
     return w;
 }
 
+static void free_tree(struct merkle_level *tree) { 
+    if (tree) {
+        unsigned j, k;
+        for (j=0; j<MAX_SUBLEVELS; j++)
+            for (k=0; k<3; k++)
+                free(tree->subtree[j][k]);
+        hss_zeroize( tree, sizeof *tree ); /* We have seeds here */
+    }
+    free(tree);
+}
+
 void hss_free_working_key(struct hss_working_key *w) {
     int i;
     if (!w) return;
     for (i=0; i<MAX_HSS_LEVELS; i++) {
-        struct merkle_level *tree = w->tree[i];
-        if (tree) {
-            unsigned j, k;
-            for (j=0; j<MAX_SUBLEVELS; j++)
-                for (k=0; k<3; k++)
-                    free(tree->subtree[j][k]);
-            hss_zeroize( tree, sizeof *tree ); /* We have seeds here */
-        }
-        free(tree);
+        free_tree(w->tree[0][i]);
     }
+#if FAULT_HARDENING
+    for (i=1; i<MAX_HSS_LEVELS; i++) {
+        free_tree(w->tree[1][i]);
+    }
+#endif
     for (i=0; i<MAX_HSS_LEVELS-1; i++) {
         free(w->signed_pk[i]);
     }
