@@ -4,4 +4,4 @@ Signature Scheme from draft-mcgrew-hash-sigs-15
 This specific branch attempts to implement optional fault tolerance;
 that is, no secret keying data is leaked on a miscompute.
 
-This is in-process; a lot more needs to be done before this is ready.
+This is in-process; I *think* it mostly works, but it still hasn't been tested
