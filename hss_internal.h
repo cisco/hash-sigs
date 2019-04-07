@@ -4,11 +4,7 @@
 #include <stdlib.h>
 #include "common_defs.h"
 #include "hss.h"
-
-/*
- * This determines whether we do the extra work to catch internal faults
- */
-#define FAULT_HARDENING  1
+#include "config.h"
 
 /*
  * This is the central internal include file for the functions that make up
@@ -100,8 +96,13 @@ struct hss_working_key {
                                   /* current root value, signed by the */
                                   /* previous level.  Unused for the */
                                   /* topmost level */
-    struct merkle_level *tree[MAX_HSS_LEVELS]; /* The structures that manage */
-                                  /* each individual level */
+    struct merkle_level *tree[FAULT_HARDENING+1][MAX_HSS_LEVELS]; /* The */
+                                  /* structures that manage each individual */
+                                  /* level.  The [1] versions are redundant */
+                                  /* copies used to double check */
+                                  /* Note: tree[1][0] == tree[0][0] */
+                                  /* Because errors in the top level tree */
+                                  /* don't allow forgeries */
 };
 
 #define MIN_SUBTREE    2  /* All subtrees (other than the root subtree) have */
@@ -229,6 +230,15 @@ bool hss_create_signed_public_key(unsigned char *signed_key,
                                     struct merkle_level *tree,
                                     struct merkle_level *parent,
                                     struct hss_working_key *w);
+#if FAULT_HARDENING
+bool hss_doublecheck_signed_public_key(const unsigned char *signed_key,
+                                    size_t len_signature,
+                                    struct merkle_level *tree,
+                                    struct merkle_level *parent,
+                                    struct hss_working_key *w);
+#endif
+/* This needs to be called after we've generated a signature */
+void hss_step_tree(struct merkle_level *tree);
 
 /* Used to generate the bottom nodes of a subtree in parallel */
 struct intermed_tree_detail {
