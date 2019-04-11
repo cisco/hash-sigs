@@ -15,6 +15,7 @@
 #include "hss_internal.h"
 #include "hss_sign_inc.h"
 #include "hss_derive.h"
+#include "hss_fault.h"
 
 /*
  * Start the process of creating an HSS signature incrementally. Parameters:
@@ -68,6 +69,7 @@ bool hss_sign_init(
     int h = bottom->h;
     ctx->h = h;
 
+    hss_set_level( w->levels-1 );
     struct seed_derive derive;
     if (!hss_seed_derive_init( &derive, bottom->lm_type, bottom->lm_ots_type,
                        bottom->I, bottom->seed )) return false;
@@ -170,7 +172,8 @@ bool hss_sign_finalize(
         hss_generate_child_seed_I_value( seed_buff[i&1], I_buff[i&1],
                                          seed, I, q,
                                          working_key->tree[0][i]->lm_type,
-                                         working_key->tree[0][i]->lm_ots_type );
+                                         working_key->tree[0][i]->lm_ots_type,
+                                         i );
         seed = seed_buff[i&1];
         I = I_buff[i&1];
 
@@ -196,6 +199,7 @@ bool hss_sign_finalize(
     /* And the final OTS signature based on that hash */
     param_set_t lm_type = working_key->tree[0][i]->lm_type;
     param_set_t ots_type = working_key->tree[0][i]->lm_ots_type;
+    hss_set_level( i );
     struct seed_derive derive;
     bool success = hss_seed_derive_init( &derive, lm_type, ots_type,
                           I, seed );

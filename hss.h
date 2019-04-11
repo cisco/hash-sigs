@@ -422,4 +422,10 @@ void hss_extra_info_set_threads( struct hss_extra_info *, int );
 bool hss_extra_info_test_last_signature( struct hss_extra_info * );
 enum hss_error_code hss_extra_info_test_error_code( struct hss_extra_info * );
 
+/*
+ * Allow applications (mainly, the fault regression test) check on the
+ * fault hardening flag
+ */
+bool hss_is_fault_hardening_on(void);
+
 #endif /* HSS_H_ */

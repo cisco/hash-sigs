@@ -12,6 +12,7 @@
 #include "lm_ots.h"
 #include "endian.h"
 #include "hss_derive.h"
+#include "hss_fault.h"
 
 /* Count the number of 1 bits at the end (lsbits) of the integer */
 /* Do it in the obvious way; straightline code may be faster (no */
@@ -87,6 +88,7 @@ static enum hss_error_code hss_compute_internal_node( unsigned char *dest,
         /* Hash it to form the leaf node */
         put_bigendian( pub_key + LEAF_R, r, 4);
         union hash_context ctx;
+        hss_set_hash_reason(h_reason_merkle);
         hss_hash_ctx( current_buf, h, &ctx, pub_key, LEAF_LEN(hash_size) );
 
         /* Work up the stack, combining right nodes with the left nodes */
@@ -134,6 +136,7 @@ void hss_combine_internal_nodes( unsigned char *dest,
     memcpy( hash_val + INTR_PK,             left_node,  hash_size );
     memcpy( hash_val + INTR_PK + hash_size, right_node, hash_size );
     union hash_context ctx;
+    hss_set_hash_reason(h_reason_merkle);
     hss_hash_ctx( dest, h, &ctx, hash_val, INTR_LEN(hash_size) );
 }
 
@@ -146,6 +149,8 @@ void hss_gen_intermediate_tree(const void *data,
     const struct intermed_tree_detail *d = data;
     unsigned hash_len = hss_hash_length(d->h);
     unsigned i;
+
+    hss_set_level(d->level);
 
     for (i=0; i<d->node_count; i++) {
         unsigned char result[ MAX_HASH ];

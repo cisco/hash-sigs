@@ -32,6 +32,7 @@
 #include "hss_reserve.h"
 #include "lm_ots_common.h"
 #include "endian.h"
+#include "hss_fault.h"
 
 #define DO_FLOATING_POINT 1  /* If clear, we avoid floating point operations */
     /* You can turn this off for two reasons: */
@@ -173,6 +174,8 @@ struct init_order {
                                   /* threads do do anything */
                                   /* We may still need to build the */
                                   /* interiors of the subtrees, of course */
+    unsigned char tree_level;     /* What tree level within the hypertree */
+                                  /* we are working on; 0-7 */
 #if DO_FLOATING_POINT
     float cost;                   /* Approximate number of hash compression */
                                   /* operations per node */
@@ -385,6 +388,26 @@ bool hss_generate_working_key(
                 hss_generate_root_seed_I_value( tree->seed, tree->I,
                                                 private_key+PRIVATE_KEY_SEED );
                 /* We don't use the I_next value */
+#if FAULT_HARDENING
+                /*
+                 * Double-check the values we just computed
+                 * Note that a failure here won't actually allow a forgery;
+                 * however it does trigger our fault tests, so we check for
+                 * it anyways; failing here on a fault is harmless
+                 */
+                unsigned char I_redux[I_LEN];
+                unsigned char seed_redux[SEED_LEN];
+                hss_generate_root_seed_I_value( seed_redux, I_redux,
+                                            private_key+PRIVATE_KEY_SEED );
+                int same = (0 == memcmp(tree->I, I_redux, I_LEN ) &&
+                            0 == memcmp(tree->seed, seed_redux, SEED_LEN));
+                hss_zeroize( seed_redux, sizeof seed_redux );
+                if (!same) {
+                    hss_zeroize( seed_redux, sizeof seed_redux );
+                    info->error_code = hss_error_fault_detected;
+                    goto failed;
+                }
+#endif
             } else {
                 /* The seed, I is derived from the parent's values */
     
@@ -395,7 +418,7 @@ bool hss_generate_working_key(
                 hss_generate_child_seed_I_value( tree->seed, tree->I,
                                                  parent->seed,  parent->I,
                                                  index, parent->lm_type,
-                                                 parent->lm_ots_type );
+                                                 parent->lm_ots_type, i );
                 /* The next seed, I is derived from either the parent's I */
                 /* or the parent's next value */
                 if (index == tree->max_index) {
@@ -404,13 +427,13 @@ bool hss_generate_working_key(
                                                 parent->seed_next,
                                                 parent->I_next,
                                                 0, parent->lm_type, 
-                                                parent->lm_ots_type);
+                                                parent->lm_ots_type, i);
                 } else {
                     hss_generate_child_seed_I_value( tree->seed_next,
                                                 tree->I_next,
                                                 parent->seed,  parent->I,
                                                 index+1, parent->lm_type,
-                                                parent->lm_ots_type);
+                                                parent->lm_ots_type, i);
                 }
             }
         }
@@ -506,6 +529,7 @@ bool hss_generate_working_key(
                 /* Schedule the creation of the entire active tree */
                 p_order->tree = tree;
                 p_order->subtree = active;
+                p_order->tree_level = i;
                 p_order->count_nodes = (merkle_index_t)1 << h_subtree;
                                         /* All *the nodes in this subtree */
                 p_order->next_tree = 0;
@@ -565,6 +589,7 @@ bool hss_generate_working_key(
                     /* tree */
                     p_order->tree = tree;
                     p_order->subtree = building;
+                    p_order->tree_level = i;
                         /* # of nodes to construct */
                     p_order->count_nodes = num_nodes;
                     p_order->next_tree = 0;
@@ -632,6 +657,7 @@ bool hss_generate_working_key(
                         /* Schedule the creation of these nodes */
                         p_order->tree = tree;
                         p_order->subtree = next;
+                        p_order->tree_level = i;
                             /* # of nodes to construct */
                         p_order->count_nodes = num_nodes;
                         p_order->next_tree = 1;
@@ -814,6 +840,7 @@ bool hss_generate_working_key(
         detail.tree_height = tree->level;
         detail.I = (p_order->next_tree ? tree->I_next : tree->I);
         detail.got_error = &got_error;
+        detail.level = p_order->tree_level;
 
 #if DO_FLOATING_POINT
         /* Check if we're actually doing a suborder */
@@ -899,6 +926,7 @@ bool hss_generate_working_key(
         unsigned h_subtree = (subtree->level == 0) ? tree->top_subtree_size :
                                                      tree->subtree_size;
         merkle_index_t lower_index = ((merkle_index_t)1 << h_subtree) - 1;
+        hss_set_level(p_order->tree_level);
 
         int n;
         for (n = 0; n < p_order->count_nodes; n++ ) {
@@ -929,6 +957,7 @@ bool hss_generate_working_key(
         const struct merkle_level *tree = p_order->tree;
         const unsigned char *I = (p_order->next_tree ? tree->I_next : tree->I);
         struct subtree *subtree = p_order->subtree;
+        hss_set_level(p_order->tree_level);
 
         if (p_order->prev_node) {
             /* This subtree did have a bottom node that was the root node */
@@ -958,6 +987,7 @@ bool hss_generate_working_key(
      * the complexity
      */
     for (i = 1; i < w->levels; i++) {
+        hss_set_level(i-1);
         if (!hss_create_signed_public_key( w->signed_pk[i], w->siglen[i-1],
                                        w->tree[0][i], w->tree[0][i-1], w )) {
             info->error_code = hss_error_internal; /* Really shouldn't */

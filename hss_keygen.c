@@ -9,6 +9,7 @@
 #include "hss_thread.h"
 #include "lm_common.h"
 #include "lm_ots_common.h"
+#include "hss_fault.h"
 
 /* Count the number of 1 bits at the end (lsbits) of the integer */
 /* Do it in the obvious way; straightline code may be faster (no */
@@ -208,6 +209,7 @@ bool hss_generate_private_key(
 
     struct intermed_tree_detail details;
         /* Set the values in the details structure that are constant */
+    details.level = 0;
     details.seed = seed;
     details.lm_type = lm_type[0];
     details.lm_ots_type = lm_ots_type[0];
@@ -280,6 +282,7 @@ bool hss_generate_private_key(
 
     /* Generate the top levels of the tree, ending with the root node */
     merkle_index_t r, leaf_node;
+    hss_set_level(0);
     for (r=level_nodes, leaf_node = 0; leaf_node < level_nodes; r++, leaf_node++) {
 
         /* Walk up the stack, combining the current node with what's on */

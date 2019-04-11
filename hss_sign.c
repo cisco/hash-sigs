@@ -15,6 +15,7 @@
 #include "lm_ots.h"
 #include "lm_ots_common.h"
 #include "hss_derive.h"
+#include "hss_fault.h"
 
 /*
  * This adds one leaf to the building and next subtree.
@@ -416,6 +417,7 @@ static void do_gen_sig( const void *detail, struct thread_collection *col) {
     const unsigned char *message = d->message;
     size_t message_len = d->message_len;
 
+    hss_set_level(levels - 1);
     if (!generate_merkle_signature(signature, signature_len,
               w->tree[0][ levels-1 ], w, message, message_len)) {
         goto failed;
@@ -452,6 +454,7 @@ static void do_step_next( const void *detail, struct thread_collection *col) {
     struct hss_working_key *w = d->w;
     struct merkle_level *tree = d->tree;
 
+    hss_set_level( w->levels - 1 );
     if (!hss_step_next_tree( tree, w, col )) {
         /* Report failure */
         hss_thread_before_write(col);
@@ -463,6 +466,7 @@ static void do_step_next( const void *detail, struct thread_collection *col) {
 struct step_building_detail {
     struct merkle_level *tree;
     struct subtree *subtree;
+    int tree_level;
     enum hss_error_code *got_error;
 };
 /* This steps the building tree */
@@ -472,6 +476,7 @@ static void do_step_building( const void *detail,
     const struct step_building_detail *d = detail;
     struct merkle_level *tree = d->tree;
     struct subtree *subtree = d->subtree;
+    hss_set_level( d->tree_level );
 
     switch (subtree_add_next_node( subtree, tree, 0, col )) {
     case subtree_got_error: default:
@@ -505,6 +510,7 @@ static void do_update_parent( const void *detail,
                                           /* non-bottom level */
     for (;;) {
         if (redux == 1 && current_level == 0) return;
+        hss_set_level(current_level);
 
         struct merkle_level *tree = w->tree[redux][current_level];
         switch (tree->update_count) {
@@ -695,6 +701,7 @@ bool hss_generate_signature(
             step_detail.tree = tree;
             step_detail.subtree = subtree;
             step_detail.got_error = &got_error;
+            step_detail.tree_level = levels-1;
 
             hss_thread_issue_work(col, do_step_building, &step_detail, sizeof step_detail);
 
@@ -826,21 +833,24 @@ done_advancing:
             /* Compute the new next I, which is derived from either the parent's */
             /* I or the parent's I_next value */
             merkle_index_t index = parent->current_index;
+            hss_set_level(i);
             if (index == parent->max_index) {
                 hss_generate_child_seed_I_value(tree->seed_next, tree->I_next,
                                            parent->seed_next, parent->I_next, 0,
                                            parent->lm_type,
-                                           parent->lm_ots_type);
+                                           parent->lm_ots_type, i);
             } else {
                 hss_generate_child_seed_I_value( tree->seed_next, tree->I_next,
                                            parent->seed, parent->I, index+1,
                                            parent->lm_type,
-                                           parent->lm_ots_type);
+                                           parent->lm_ots_type, i);
              }
     
              tree->current_index = 0;  /* We're starting this from scratch */
     
              /* Generate the signature of the new level */
+             hss_set_level(i-1);  /* Now we'll work with the parent */
+                                    /* tree hashes */
 #if FAULT_HARDENING
              /* Double check the signature we make last iteration */
              if (redux) {

@@ -217,7 +217,8 @@ void hss_generate_root_seed_I_value(unsigned char *seed, unsigned char *I,
 void hss_generate_child_seed_I_value( unsigned char *seed, unsigned char *I,
                    const unsigned char *parent_seed,
                    const unsigned char *parent_I, merkle_index_t index,
-                   param_set_t parent_lm, param_set_t parent_ots );
+                   param_set_t parent_lm, param_set_t parent_ots,
+                   int child_level );
 
 /* Combine two internal nodes */
 void hss_combine_internal_nodes( unsigned char *dest,
@@ -252,6 +253,7 @@ struct intermed_tree_detail {
     const unsigned char *I;
     unsigned node_count;
     enum hss_error_code *got_error;
+    int level;         /* Which Merkle tree within the hypertree */
 };
 struct thread_collection;
 void hss_gen_intermediate_tree(const void *data,
@@ -274,6 +276,7 @@ struct verify_detail {
     size_t message_len;
     const unsigned char *signature;
     size_t signature_len;
+    int tree_level;
 };
 void validate_internal_sig(const void *data,
                                struct thread_collection *col);

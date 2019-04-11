@@ -3,6 +3,7 @@
 #include "hss_internal.h"
 #include "hash.h"
 #include "endian.h"
+#include "hss_fault.h"
 
 #if SEED_LEN == 32
 #define HASH HASH_SHA256  /* We always use SHA-256 to derive seeds */
@@ -49,6 +50,16 @@ void hss_seed_derive( unsigned char *seed, struct seed_derive *derive,
     put_bigendian( buffer + PRG_J, derive->j, 2 );
     buffer[PRG_FF] = 0xff;
     memcpy( buffer + PRG_SEED, derive->master_seed, SEED_LEN );
+
+    /* Declare the reason we're doing this (for the fault instrumentation */
+    switch (derive->j) {
+    default:
+         hss_set_hash_reason(h_reason_derive); break;
+    case SEED_CHILD_SEED: case SEED_CHILD_I:
+         hss_set_hash_reason(h_reason_derive_iseed); break;
+    case SEED_RANDOMIZER_INDEX:
+         hss_set_hash_reason(h_reason_derive_c); break;
+    }
 
     hss_hash( seed, HASH, buffer, PRG_LEN(SEED_LEN) );
 
@@ -129,6 +140,7 @@ void hss_seed_derive_set_q( struct seed_derive *derive, merkle_index_t q ) {
     derive->q = q;
     unsigned bits_change = my_log2(change);
     unsigned q_levels = derive->q_levels;
+    hss_set_hash_reason(h_reason_derive);
 
         /* levels_change will be the number of levels of the q-tree we'll */
         /* need to recompute */
@@ -197,6 +209,16 @@ void hss_seed_derive_set_j( struct seed_derive *derive, unsigned j ) {
     unsigned j_levels = derive->j_levels;
     unsigned shift = SECRET_MAX * j_levels;
 
+    /* Declare the reason we're doing this (for the fault instrumentation */
+    switch (j) {
+    default:
+         hss_set_hash_reason(h_reason_derive); break;
+    case SEED_CHILD_SEED: case SEED_CHILD_I:
+         hss_set_hash_reason(h_reason_derive_iseed); break;
+    case SEED_RANDOMIZER_INDEX:
+         hss_set_hash_reason(h_reason_derive_c); break;
+    }
+
     unsigned j_mask = derive->j_mask;
     j &= j_mask-1; /* Set the high-order bit; clear any bits above that */
     j |= j_mask;  /* This ensures that when we do the hashes, that the */
@@ -222,10 +244,17 @@ void hss_seed_derive_set_j( struct seed_derive *derive, unsigned j ) {
 /* (which means incrementally computing that path) */
 void hss_seed_derive( unsigned char *seed, struct seed_derive *derive,
                       bool increment_j ) {
+
     memcpy( seed, derive->j_seed[ derive->j_levels - 1], SEED_LEN );
 
     if (increment_j) {
         int i;
+
+        /* Declare the reason we're doing this */
+        /* Distinguishing between OTS key generation (the 99% case) */
+        /* and stepping to the I value (the 1% case) is annoying */
+        /* so don't bother - the fault test doesn't really need this */
+        hss_set_hash_reason(h_reason_derive);
 
         /* Update the j_values, and figure out which hashes we'll need */
         /* to recompute */

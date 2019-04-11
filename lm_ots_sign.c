@@ -11,6 +11,7 @@
 #include "hss_zeroize.h"
 #include "hss_derive.h"
 #include "hss_internal.h"
+#include "hss_fault.h"
 
 bool lm_ots_generate_public_key(
     param_set_t lm_ots_type,
@@ -25,6 +26,7 @@ bool lm_ots_generate_public_key(
         return false;
 
     /* Start the hash that computes the final value */
+    hss_set_hash_reason(h_reason_ots_pkgen);
     union hash_context public_ctx;
     hss_init_hash_context(h, &public_ctx);
     {
@@ -54,6 +56,7 @@ bool lm_ots_generate_public_key(
         hss_seed_derive( buf + ITER_PREV, seed, i < p-1 );
         put_bigendian( buf + ITER_K, i, 2 );
         /* We'll place j in the buffer below */
+        hss_set_hash_reason(h_reason_ots_pkgen);
         for (j=0; j < (1<<w) - 1; j++) {
             buf[ITER_J] = j;
 
@@ -121,6 +124,7 @@ bool lm_ots_generate_signature(
     /* Compute the initial hash */
     unsigned char Q[MAX_HASH + 2];
     if (!prehashed) {
+        hss_set_hash_reason(h_reason_ots_sign);
         hss_init_hash_context(h, &ctx);
 
         /* First, we hash the message prefix */
@@ -154,6 +158,7 @@ bool lm_ots_generate_signature(
         hss_seed_derive( tmp + ITER_PREV, seed, i<p-1 );
         unsigned a = lm_ots_coef( Q, i, w );
         unsigned j;
+        hss_set_hash_reason(h_reason_ots_sign);
         for (j=0; j<a; j++) {
             tmp[ITER_J] = j;
             hss_hash_ctx( tmp + ITER_PREV, h, &ctx, tmp, ITER_LEN(n) );
@@ -196,6 +201,7 @@ bool lm_ots_doublecheck_signature(
 
     /* Compute the initial hash */
     unsigned char Q[MAX_HASH + 2];
+    hss_set_hash_reason(h_reason_ots_sign);
     hss_init_hash_context(h, &ctx);
 
     /* First, we hash the message prefix */
@@ -226,6 +232,7 @@ bool lm_ots_doublecheck_signature(
         hss_seed_derive( tmp + ITER_PREV, seed, i<p-1 );
         unsigned a = lm_ots_coef( Q, i, w );
         unsigned j;
+        hss_set_hash_reason(h_reason_ots_sign);
         for (j=0; j<a; j++) {
             tmp[ITER_J] = j;
             hss_hash_ctx( tmp + ITER_PREV, h, &ctx, tmp, ITER_LEN(n) );

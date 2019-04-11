@@ -13,6 +13,7 @@
 #include "hss_internal.h"
 #include "hss_aux.h"
 #include "hss_derive.h"
+#include "hss_fault.h"
 
 /*
  * Allocate and load an ephemeral key
@@ -80,6 +81,8 @@ static void compute_private_key_checksum(
     unsigned char hash[MAX_HASH];
 
         /* Hash everything except the checksum */
+    hss_set_level(0);
+    hss_set_hash_reason(h_reason_priv_checksum);
     hss_init_hash_context( HASH_SHA256, &ctx );
     hss_update_hash_context( HASH_SHA256, &ctx,
                              private_key, PRIVATE_KEY_CHECKSUM );
@@ -207,6 +210,9 @@ void hss_generate_root_seed_I_value(unsigned char *seed, unsigned char *I,
 #endif
     union hash_context ctx;
 
+    hss_set_level(0);
+    hss_set_hash_reason(h_reason_other);
+
     hss_hash_ctx(hash_postimage, HASH_SHA256, &ctx, hash_preimage,
                                                             TOPSEED_LEN );
     memcpy( hash_preimage + TOPSEED_SEED, hash_postimage, SEED_LEN );
@@ -237,7 +243,8 @@ void hss_generate_child_seed_I_value( unsigned char *seed, unsigned char *I,
                    const unsigned char *parent_seed,
                    const unsigned char *parent_I,
                    merkle_index_t index,
-                   param_set_t lm, param_set_t ots) {
+                   param_set_t lm, param_set_t ots, int child_level) {
+    hss_set_level(child_level);
     struct seed_derive derive;
     if (!hss_seed_derive_init( &derive, lm, ots, parent_I, parent_seed )) {
         return;
@@ -274,4 +281,8 @@ bool hss_extra_info_test_last_signature( struct hss_extra_info *p ) {
 enum hss_error_code hss_extra_info_test_error_code( struct hss_extra_info *p ) {
     if (!p) return hss_error_got_null;
     return p->error_code;
+}
+
+bool hss_is_fault_hardening_on(void) {
+    return FAULT_HARDENING;
 }

@@ -10,17 +10,6 @@
  */
 
 /*
- * This determines whether we do the extra work to catch internal faults
- * Note that the goal of this is to prevent errors that would cause us
- * to leak information that would allow forgeries; errors that only cause us
- * to produce invalid signatures are not of concern.
- * 0 -> We don't.
- * 1 -> We do.  This has the extra cost of increassing load and signature
- *      generation times, and memory consumption
- */
-#define FAULT_HARDENING  1
-
-/*
  * These control how we do threading; these apply only if we have the
  * threading library installed
  *
@@ -31,9 +20,20 @@
 
 /*
  * This is the number of threads we'll try to create if the application
- * doesnt' tell us otherwise (i.e. passes in 0)
+ * doesn't specify otherwise (i.e. passes in 0)
  */
 #define DEFAULT_THREAD 16 /* Go with 16 threads by default */
+
+/*
+ * This determines whether we do the extra work to catch internal faults
+ * Note that the goal of this is to prevent errors that would cause us
+ * to leak information that would allow forgeries; errors that only cause us
+ * to produce invalid signatures are not of concern.
+ * 0 -> We don't.
+ * 1 -> We do.  This has the extra cost of increassing load and signature
+ *      generation times, and memory consumption
+ */
+#define FAULT_HARDENING  0
 
 /*
  * This modifies which seed generation logic we use
@@ -41,10 +41,11 @@
  * between private keys.
  *
  * 0 -> We generate seeds using the process defined in Appendix A of the draft
+ *      This is slightly faster
  * 1 -> We use a side channel resistant process, never using any single secret
  *      seed in more than a defined number of distinct hashes
  */
-#define SECRET_METHOD 1
+#define SECRET_METHOD 0
 
 /*
  * If we're using the side channel resistant method, this defines the max
@@ -76,5 +77,14 @@
  * 1 -> Include debugging code
  */
 #define ALLOW_VERBOSE 0  /* Don't do instrumentation */
+
+/*
+ * This determines whether we'll including some test instrumenetation into
+ * the code.  This is never appropriate for a real application; this does
+ * allow the testing code to run some additional tests
+ * 0 -> Omit instrumentation
+ * 1 -> Include instrumentation
+ */
+#define TEST_INSTRUMENTATION 0  /* Test mode off */
 
 #endif /* CONFIG_H_ */

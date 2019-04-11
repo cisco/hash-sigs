@@ -234,13 +234,14 @@ We also have an optional third section to the private key:
      full-speed-ahead' mode doesn't use that much memory (unless the bottom
      level Merkle tree is huge).  Yes, there's a delta, but not a big one.
 
-- For any function that can update the private key, we have the application
-  (the program that is using the package to sign messages) pass a function
-  ("update_private_key") and a context pointer.  If this is non-NULL, then
-  when we update the private key, we call this function, what this function is
-  expected to do is write the private key into secure storage (and pass
-  nonzero on success); if you pass a NULL function pointer, then we assume
-  that passed context pointer is actually the pointer to the private key.
+- When we load the working key into memory, we have the application (the
+  program that is using the package to sign messages) pass two functions
+  ("read_private_key" and "update_private_key") and a context pointer.  If
+  these are non-NULL, then to read the private key or to update it, we call
+  one of these functions. What these functions are expected to do is
+  read/write the private key into secure storage (and pass nonzero on
+  success); if you pass NULL function pointers, then we assume that passed
+  context pointer is actually the pointer to the private key.
 
 - Explicit implementation of the reservation primitive.  Right now, we have
   an API that states "make sure that we have N signatures reserved (so that
@@ -486,11 +487,9 @@ likely not to implement it:
      be that the master does a fresh hss_generate_working_key; there are more
      efficient ways to do it, but there are lots of corner cases that would
      require testing to make sure we've covered everything.  The subkey we
-     send to the client would be the private key plus one parameter (the
-     allowed maximum); we might want to modify our private key format to
-     include this maximum if we're serious about this (so that the secondary
-     signer could run the standard HSS code).  There are likely a number of
-     gotcha's involved; however less than the below idea.
+     send to the client would be the private key with the maximum sequence
+     number set to X+N-1.  There are likely a number of gotcha's involved;
+     however, much of the work has already been done.
   2. We'd also have a master holder, but instead of giving the entire secret
      key to the secondary signer (and tell him "please only use sequence
      numbers from X to X+N-1"), we instead gave him an entire subtree (without
@@ -585,12 +584,6 @@ likely not to implement it:
   be seen in an uninitialized buffer.  Should we also include a magic value
   as well, for some simple validity checking?  Something like that certainly
   wouldn't be fool-proof; however it might catch some simple mistakes.
- 
-- Right now, we pass the update_private_key to every hss_generate_signature
-  operation.  Would it make more sense to pass it instead when we
-  hss_load_private_key, and just store it in the working_key?  Would it
-  make sense to use the same context for read_private_key and 
-  update_private_key?
 
 - Right now, hss_extra_info has a last_signature flag.  Would it be more
   useful to have a 'signatures_remaining' count instead (and when it hits
