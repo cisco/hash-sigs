@@ -32,6 +32,7 @@ static struct {
     { "thread", test_thread, "threading logic test", false,
         check_threading_on },
     { "h25", test_h25, "H=25 test", true, check_h25 },
+    { "fault", test_fault, "fault test", true, check_fault_enabled },
  /* Add more here */  
 };
 

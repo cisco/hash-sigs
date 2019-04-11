@@ -11,6 +11,7 @@
 #include "endian.h"
 #include "hash.h"
 #include "hss_zeroize.h"
+#include "hss_fault.h"
 
 /*
  * The structure of aux data
@@ -214,6 +215,8 @@ void hss_save_aux_data( struct expanded_aux_data *data, unsigned level,
  */
 static void compute_seed_derive( unsigned char *result, unsigned hash,
      const unsigned char *seed, union hash_context *ctx) {
+    hss_set_level(0);
+    hss_set_hash_reason(h_reason_other);
     hss_init_hash_context( hash, ctx );
     unsigned char prefix[ DAUX_PREFIX_LEN ];
     memset( prefix, 0, DAUX_D );
@@ -250,6 +253,8 @@ static void compute_hmac( unsigned char *dest,
     unsigned block_size = hss_hash_blocksize(hash);
 
     /* Step 1: first phase of the HMAC */
+    hss_set_level(0);
+    hss_set_hash_reason(h_reason_other);
     hss_init_hash_context( hash, ctx );
     xor_key( key, IPAD, size_hash );
     hss_update_hash_context( hash, ctx, key, size_hash );
