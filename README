@@ -4,4 +4,13 @@ Signature Scheme from draft-mcgrew-hash-sigs-15
 This specific branch attempts to implement optional fault tolerance;
 that is, no secret keying data is leaked on a miscompute.
 
-This is in-process; I *think* it mostly works, but it still hasn't been tested
+This appears to be complete and tested.
+
+Changes:
+- Expanded the size of the private key to 64 bytes (both to add a
+  checksum to detect NVRAM errors, and to include a 'max count' value
+  which may be useful in key sharing
+- Added a FAULT_TOLERANCE flag that, when exabled, adds checking logic
+  to the public key computations; this is at some cost to both time
+  and memory
+- Added a fault regression test, which tests out the above protection
