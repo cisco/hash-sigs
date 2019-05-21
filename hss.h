@@ -299,7 +299,7 @@ bool hss_set_autoreserve(
 size_t hss_get_private_key_len(unsigned levels,
                    const param_set_t *lm_type,
                    const param_set_t *lm_ots_type);
-#define HSS_MAX_PRIVATE_KEY_LEN (8 + 8 + 8 + 8 + SEED_LEN)
+#define HSS_MAX_PRIVATE_KEY_LEN (4 + 8 + 8 + 8 + 8 + SEED_LEN)
 
 /*
  * This include file has the functions that contains the lengths of the other

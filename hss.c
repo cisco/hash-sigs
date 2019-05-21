@@ -100,7 +100,27 @@ static void compute_private_key_checksum(
     hss_zeroize( hash, sizeof hash );
 }
 
+static const unsigned char expected_format[ PRIVATE_KEY_FORMAT_LEN ] = {
+    0x01,  /* Current format version */
+    SECRET_METHOD ? SECRET_MAX : 0xff,  /* Secret method marker */
+    0,     /* Reserved for future use */
+    0
+};
+
+void hss_set_private_key_format(unsigned char *private_key) {
+    memcpy( private_key + PRIVATE_KEY_FORMAT, expected_format,
+            PRIVATE_KEY_FORMAT_LEN );
+}
+
 bool hss_check_private_key(const unsigned char *private_key) {
+    /* If the key isn't in the format we expect, it's a bad key (or, at */
+    /* least, it's unusable by us) */
+    if (0 != memcmp( private_key + PRIVATE_KEY_FORMAT, expected_format,
+                                                 PRIVATE_KEY_FORMAT_LEN )) {
+        return false;
+    }
+
+    /* Check the checksum on the key */
     unsigned char checksum[ PRIVATE_KEY_CHECKSUM_LEN ];
     compute_private_key_checksum( checksum, private_key );
     bool success = (0 == memcmp( checksum, &private_key[PRIVATE_KEY_CHECKSUM],

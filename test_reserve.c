@@ -50,7 +50,7 @@ static bool update_private_key(unsigned char *private_key,
 
     int i;
     for (i=0; i<8; i++) {
-        if (private_key[i] != 0xff) break;
+        if (private_key[i+4] != 0xff) break;
     }
     if (i == 8) {
         hit_end = true;
@@ -60,7 +60,7 @@ static bool update_private_key(unsigned char *private_key,
     /* Our tests never have seqno's larger than 2**32-1 */
     /* If we see any larger claimed, it's an error */
     for (i=0; i<4; i++) {
-        if (private_key[i] != 0x00) {
+        if (private_key[i+4] != 0x00) {
             got_error = true;
             return true;
         }
@@ -69,7 +69,7 @@ static bool update_private_key(unsigned char *private_key,
     /* Pull out the sequence number from the private key */
     last_seqno = 0;
     for (i=4; i<8; i++) {
-        last_seqno = 256*last_seqno + private_key[i];
+        last_seqno = 256*last_seqno + private_key[i+4];
     }
 
     return true;

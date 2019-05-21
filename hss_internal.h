@@ -22,7 +22,9 @@
 /*
  * The internal structure of a private key
  */
-#define PRIVATE_KEY_INDEX 0
+#define PRIVATE_KEY_FORMAT 0    /* 4 byte description of the key format */
+#define PRIVATE_KEY_FORMAT_LEN 4
+#define PRIVATE_KEY_INDEX (PRIVATE_KEY_FORMAT + PRIVATE_KEY_FORMAT_LEN)
 #define PRIVATE_KEY_INDEX_LEN 8  /* 2**64 signatures should be enough for */
                                  /* everyone */
 #define PRIVATE_KEY_CHECKSUM (PRIVATE_KEY_INDEX + PRIVATE_KEY_INDEX_LEN)
@@ -34,7 +36,7 @@
 #define PRIVATE_KEY_SEED (PRIVATE_KEY_PARAM_SET + PRIVATE_KEY_PARAM_SET_LEN)
 #define PRIVATE_KEY_SEED_LEN SEED_LEN
 #define PRIVATE_KEY_LEN (PRIVATE_KEY_SEED + PRIVATE_KEY_SEED_LEN) /* That's */
-                                                                /* 64 bytes */
+                                                                /* 68 bytes */
 
 /*
  * Routines to read/update the private key
@@ -51,6 +53,7 @@ enum hss_error_code hss_write_private_key_no_w(
                                     size_t len_private_key, void *context),
             void *context);
 bool hss_check_private_key(const unsigned char *private_key);
+void hss_set_private_key_format(unsigned char *private_key);
 
 struct merkle_level;
 struct hss_working_key {

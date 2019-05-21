@@ -111,6 +111,7 @@ bool hss_generate_private_key(
     unsigned char private_key[ PRIVATE_KEY_LEN ];
 
         /* First step: format the private key */
+    hss_set_private_key_format( private_key );
     put_bigendian( private_key + PRIVATE_KEY_INDEX, 0,
                    PRIVATE_KEY_INDEX_LEN );
     if (!hss_compress_param_set( private_key + PRIVATE_KEY_PARAM_SET,

@@ -204,8 +204,15 @@ sources.
   this subsystem, and what they really mean
   private key
       This is what the raw private key looks like.  It's not a formal C
-      structure; instead, it is a byte array, currently 64 bytes long,
+      structure; instead, it is a byte array, currently 68 bytes long,
       split up into:
+      - 4 bytes of key format; this is to allow us to modify the key format
+        in the future, without causing disasters if someone tries to load
+        a previous key format.  The 4 bytes are:
+           0x01 - The current format
+           SECRET_MAX - The SECRET_MAX this key was generated with; 0xff
+                   if SECRET_METHOD == 0
+           0x00, 0x00 - For future use
       - 8 bytes of count; this is the state that gets updated with every
         signature, and consists of a bigendian count of the number of
         signatures so far.  By convention, a setting of 0xffffffffffffffff
@@ -226,8 +233,6 @@ sources.
       This is a flat set of bytes, because we hand it to read_private_key
       and update_private_key routines, which are expected to read/write
       them to long term storage.
-      Random musing: should we have included a version parameter (so we
-      could change the format without breaking things???)
   struct hss_working_key
       This structure holds all the current state of a loaded private key.
       It contains a copy of the private key (so we can write it out as
