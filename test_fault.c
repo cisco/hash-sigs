@@ -10,12 +10,12 @@
  * same concern is valid here.
  *
  * This package implements optional protection against this fault attack
- * (enabled by the FAULT_HARDENING flag); this regression test tries to
- * hammer at it to make sure that it gives as much protection as we would
- * hope.
+ * (enabled by either the FAULT_RECOMPUTE or FAULT_CACHE_SIG flags); this
+ * regression test tries to hammer at it to make sure that it gives as much
+ * protection as we would hope.
  *
  * Here's how this test works; if TEST_INSTRUMENTATION is enabled, then
- * we can selectively inject hash faults (currently, we have 29 different
+ * we can selectively inject hash faults (currently, we have 19-21`different
  * categories of fault locations); when triggered, the corresponding
  * SHA526 hash is wrong.  What we do is generate a number of HSS signatures
  * (periodically reloading the key; a fault during a key reload needs to
@@ -62,7 +62,7 @@ bool check_fault_enabled(bool fast_flag) {
     /* Check whether the LMS implementation claims to be hardened */
     /* against fault attacks.  Note: to test this test to see if it'll */
     /* detect faults, comment out the below lines */
-    if (!hss_is_fault_hardening_on()) {
+    if (!hss_is_fault_hardening_on( 0 )) {
         printf( "  Fault hardening is not enabled - test of fault hardening logic skipped\n" );
         allow_test_to_go_through = false;
             /* Lets not bother the user with whether instrumentation was */
@@ -94,15 +94,6 @@ bool check_fault_enabled(bool fast_flag) {
 }
 
 /*
- * These are the fixed parameter set we'll use
- */
-static param_set_t lm_array[3] = { LMS_SHA256_N32_H5, LMS_SHA256_N32_H5,
-                                   LMS_SHA256_N32_H5 };
-static param_set_t ots_array[3] = { LMOTS_SHA256_N32_W2, LMOTS_SHA256_N32_W2,
-                                    LMOTS_SHA256_N32_W2 };
-#define NUM_LEVELS 3
-
-/*
  * This is the exemplar private key we'll use.
  */
 static unsigned char private_key[HSS_MAX_PRIVATE_KEY_LEN];
@@ -114,14 +105,30 @@ static bool rand_1(void *output, size_t len) {
     return true;
 }
 
-static bool gen_private_key(void) {
+static bool gen_private_key(unsigned num_level,
+                            const param_set_t *lm, const param_set_t *ots,
+                            unsigned long initial_count) {
     unsigned char public_key[HSS_MAX_PUBLIC_KEY_LEN];
-    return hss_generate_private_key( rand_1,
-                                     NUM_LEVELS, lm_array, ots_array,
+    if (!hss_generate_private_key( rand_1,
+                                     num_level, lm, ots,
                                      0, private_key,
                                      public_key, sizeof public_key,
                                      aux_data, sizeof aux_data,
-                                     0 );
+                                     0 )) {
+        return false;
+    }
+        /* If requested, advance the key to the specified location */
+    if (initial_count > 0) {
+        /* Step the tree to the requested location */
+        struct hss_working_key *w = hss_load_private_key( 0, 0, private_key,
+                              0, aux_data, sizeof aux_data, 0 );
+        if (!w) return false;
+        bool success = hss_reserve_signature( w, initial_count, 0 );
+        hss_free_working_key(w);
+        if (!success) return false;
+    }
+
+    return true;
 }
 
 #define FIRST_ITER      69  /* For the first iteration, generate 69 */
@@ -170,7 +177,8 @@ static bool gen_private_key(void) {
 static bool run_iteration(int iter, bool fail_on_error,
            void (*allow_app_to_get_stats)(int when, void *context),
            bool (*store_signature)(const unsigned char *signature, int len_sig,
-                                   void *context),
+                                   void *context, int num_levels),
+           int num_levels,
            void *context) {
     struct hss_extra_info info = { 0 };
     hss_extra_info_set_threads( &info, 1 );  /* Shut off multithreading */
@@ -189,7 +197,7 @@ static bool run_iteration(int iter, bool fail_on_error,
     int i;
     /*
      * We go through 3 reload cycles; one good one, one where the fault
-     * actually haapens, and then another good one
+     * actually happens, and then another good one
      */
     for (i=0; i<3; i++) {
         if (i == 1 && allow_app_to_get_stats)
@@ -245,7 +253,8 @@ static bool run_iteration(int iter, bool fail_on_error,
             }
 
             if (store_signature &&
-                  !store_signature( signature, len_signature, context )) {
+                  !store_signature( signature, len_signature,
+                                    context, num_levels )) {
                 free(signature);
                 hss_free_working_key(w);
                 return false;
@@ -358,13 +367,13 @@ static void delete_database(struct database *d) {
  * sigantures/messages, and inserts those into the databae
  */
 static bool store_sigs( const unsigned char *signature, int len_sig,
-                                   void *context) {
+                                   void *context, int num_levels) {
     struct database *d = context;
 
     signature += 4; len_sig -= 4; /* Skip over the number of levels */
 
     int i;
-    for (i=0; i<NUM_LEVELS; i++) {
+    for (i=0; i<num_levels; i++) {
         /* Get the I value from the public key */
         unsigned char I[16];
         if (i == 0) {
@@ -388,7 +397,7 @@ static bool store_sigs( const unsigned char *signature, int len_sig,
         /* Get the message that was signed */
         const unsigned char *message;
         int len_msg;
-        if (i == NUM_LEVELS-1) {
+        if (i == num_levels-1) {
             message = (void *)"abc";
             len_msg = 3;
         } else {
@@ -414,12 +423,16 @@ static void get_stats( int index, void *p ) {
     count[index] = -hash_fault_count;
 }
 
-#define NUM_REASON 8   /* Currently, the LMS code defines 8 distinct reasons */
+#define NUM_REASON 9   /* Currently, the LMS code defines 9 distinct reasons */
                        /* (see hss_fault.h for the current list) */
- 
-bool test_fault(bool fast_flag, bool quiet_flag) {
+
+static bool do_test( int num_level,
+                     const param_set_t *lm, const param_set_t *ots,
+                     bool fast_flag, bool quiet_flag,
+                     unsigned long start_location,
+                     float start_percent, float end_percent ) {
     /* Create the exemplar private key */
-    if (!gen_private_key()) return false;
+    if (!gen_private_key(num_level, lm, ots, start_location)) return false;
 
     int iter;
     int max_iter = (fast_flag ? 1 : 2);
@@ -449,7 +462,7 @@ bool test_fault(bool fast_flag, bool quiet_flag) {
          *       signature generation
          *  3 -> total # of hashes done
          */
-        unsigned long count_hashes[NUM_LEVELS][NUM_REASON][4];
+        unsigned long count_hashes[MAX_HSS_LEVELS][NUM_REASON][4];
 
         /*
          * Count the number of times we compute each hash reason
@@ -459,7 +472,7 @@ bool test_fault(bool fast_flag, bool quiet_flag) {
          */
         int level, reason;
         int total_tests = 0;
-        for (level = 0; level < NUM_LEVELS; level++) {
+        for (level = 0; level < num_level; level++) {
             for (reason = 0; reason < NUM_REASON; reason++) {
                 hash_fault_enabled = 1;
                 hash_fault_level = level;
@@ -468,7 +481,7 @@ bool test_fault(bool fast_flag, bool quiet_flag) {
                     /* don't actually miscompute any hashes; however */
                     /* hash_fault_count is still decremented every */
                     /* time we get a match */
-                bool success = run_iteration(iter, true, get_stats, 0, 
+                bool success = run_iteration(iter, true, get_stats, 0, 0,
                                   &count_hashes[level][reason][0]);
                 hash_fault_enabled = 0;
                 if (!success) return false;
@@ -493,7 +506,7 @@ bool test_fault(bool fast_flag, bool quiet_flag) {
          * of those hashes fail once (about half way through)
          */
         int tests_run = 0;
-        for (level = 0; level < NUM_LEVELS; level++) {
+        for (level = 0; level < num_level; level++) {
             for (reason = 0; reason < NUM_REASON; reason++) {
                 int z;
                 for (z = 0; z<2; z++) {
@@ -507,8 +520,8 @@ bool test_fault(bool fast_flag, bool quiet_flag) {
 
                    if (!quiet_flag) {
                       float new_percent = (float)tests_run / total_tests;
-                      new_percent = start_range + (stop_range - start_range) * new_percent;
-                      new_percent *= 100;
+                      new_percent = (stop_range - start_range) * new_percent;
+                      new_percent = start_percent + (end_percent - start_percent) * new_percent;
                       if (new_percent >= percent+1) {
                           percent = (int)new_percent;
                           printf( "    %d%%\r", percent );
@@ -560,8 +573,8 @@ printf( "*** RUNNING TESTS with level = %d reason = %d z = %d %d0%%\n", level, r
 #endif
    
                         /* Run the test (with the specific failure */ 
-                        bool success = run_iteration(iter, false, 0, store_sigs,
-                                                 &seen_sigs);
+                        bool success = run_iteration(iter, false, 0,
+                                         store_sigs, num_level, &seen_sigs);
 
                         /* Turn off failure testing */
                         hash_fault_enabled = 0;
@@ -586,6 +599,42 @@ printf( "*** RUNNING TESTS with level = %d reason = %d z = %d %d0%%\n", level, r
             if (!success) return false;
         }
     }
+    return true;
+}
+
+bool test_fault(bool fast_flag, bool quiet_flag) {
+    {
+        /* Run the test using a three level tree */
+        param_set_t lm_array[3] = { LMS_SHA256_N32_H5, LMS_SHA256_N32_H5,
+                                   LMS_SHA256_N32_H5 };
+        static param_set_t ots_array[3] = { LMOTS_SHA256_N32_W2,
+                                   LMOTS_SHA256_N32_W2, LMOTS_SHA256_N32_W2 };
+        float start = fast_flag ? 10  : 5;  /* Percentages for the program */
+        float stop  = fast_flag ? 100 : 40; /* output */
+        if (!do_test( 3, lm_array, ots_array, fast_flag, quiet_flag,
+                      0UL, start, stop )) {
+            return false;
+        }
+    }
+    if (!fast_flag) {
+        /* Run the test using a seven level tree, with us stepping through */
+        /* the bottom 6 trees during the test */
+        /* This works out some of the key storage with CACHE_SIG */ 
+        param_set_t lm_array[7] = { LMS_SHA256_N32_H5, LMS_SHA256_N32_H5,
+                                   LMS_SHA256_N32_H5, LMS_SHA256_N32_H5,
+                                   LMS_SHA256_N32_H5, LMS_SHA256_N32_H5,
+                                   LMS_SHA256_N32_H5 };
+        static param_set_t ots_array[7] = { LMOTS_SHA256_N32_W2,
+                                   LMOTS_SHA256_N32_W2, LMOTS_SHA256_N32_W2,
+                                   LMOTS_SHA256_N32_W2, LMOTS_SHA256_N32_W2,
+                                   LMOTS_SHA256_N32_W2, LMOTS_SHA256_N32_W2 };
+        if (!do_test( 7, lm_array, ots_array, fast_flag, quiet_flag,
+                      (1UL<<30) - 100, 50.0, 100.0 )) {
+            return false;
+        }
+    }
+
     if (!quiet_flag) printf( "\n" );
+
     return true;
 }

@@ -114,6 +114,11 @@ bool hss_generate_private_key(
     hss_set_private_key_format( private_key );
     put_bigendian( private_key + PRIVATE_KEY_INDEX, 0,
                    PRIVATE_KEY_INDEX_LEN );
+#if FAULT_CACHE_SIG
+        /* Mark all signatures as "not computed yet" */
+    memset( private_key + PRIVATE_KEY_SIG_CACHE, 0,
+            PRIVATE_KEY_SIG_CACHE_LEN );
+#endif
     if (!hss_compress_param_set( private_key + PRIVATE_KEY_PARAM_SET,
                    levels, lm_type, lm_ots_type,
                    PRIVATE_KEY_PARAM_SET_LEN )) {

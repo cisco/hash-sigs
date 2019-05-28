@@ -27,11 +27,26 @@ sources.
           to spawn.
   DEFAULT_THREAD This is the number of child threads we can attempt to spawn
           if the application doesn't tell us otherwise.
-  FAULT_HARDENING If this flag is set, then this package attempts to implement
-          protection against fault injectio attacks; if you have an attacker
-          that can plausibly make you miscompute something, this is of
-          interest.  Turning this on does increase the time taken and the
-          memory used.
+  FAULT_CACHE_SIG If this flag is set, then his package attempts to implement
+          protection against fault injectio attacks; it works by hashing the
+          internal signatures (when they are first computed) and storing them
+          in the private key; if we later recompute them, we check to see if
+          they have changed (and if so, we declare an error).  If you have an
+          attacker that can plausibly make you miscompute something, this (or
+          the previous oe) is of interest.  Turning this on does increase the
+          size of the private key; in addiiton, if you're doing autoreserve,
+          this may increase the number of times we update the private key.
+  FAULT_CACHE_LEN If FAULT_CACHE_SIG is set, then this determines the size of
+          the hash we store in the private key; larger values make it harder
+          for an attacker that can precisely target faults to get one past
+          this logic; smaller values use up less room in the private key.
+  FAULT_RECOMPUTE If this flag is set, then this package attempts to implement
+          protection against fault injectio attacks; it works by computing the
+          public keys and internal signatures twice (and indepdently); if they
+          don't match, then an error is declared. If you have an attacker
+          that can plausibly make you miscompute something, this (or the
+          next oe) is of interest.  Turning this on does increase the time
+          taken and the memory used.
   SECRET_METHOD This controls how seeds are generated
           Note that changing this (or SECRET_MAX) will invalidate any existing
           private keys.
@@ -138,7 +153,7 @@ sources.
   operations than expected (e.g. one of its ACTIVE_TREEs is on the right
   side, and so there's no need for us to update the BUILDING_TREE), and so
   the caller doesn't see any unexpected expense at all.
-  A third difference (if fault hardening is on) is that we don't keep a
+  A third difference (if fault recomputation is on) is that we don't keep a
   redundant copy of the top level LMS tree.
   When we load a private key in memory, the bulk of the work is initializing
   the subtrees to be what we'd expect them to hold, based on what the current
@@ -442,21 +457,38 @@ sources.
   by https://eprint.iacr.org/2018/674.pdf in the context of Sphincs; the same
   concern is valid here.
   This package implements optional protection against this fault attack,
-  enabled by the FAULT_HARDENING flag.  If this flag is set, we will
-  redundently recompute the LMS public keys (other than the top one),
-  and if they get out of sync, fail.  Because this fault attack works
-  by having two different public keys signed by the same OTS private key,
-  making sure that the public keys are computed correctly protects against
-  this.
-  You enable this protection by setting FAULT_HARDENING in config.h to 1
-  and recompiling.
-  The costs of this protection: we increase both the signature generation
+  enabled by the FAULT_RECOMPUTE or the FAULT_CACHE_SIG flags.  We actually
+  implement two separate protections; the user can choose to use either or
+  both.  BTW: why did we bother with two separate methods?  Well, I first
+  implemented the FAULT_RECOMPUTE method; after that work was done, I realized
+  that the FAULT_CACHE_SIG method would also work (and be cheaper), and so I
+  implemented that (and had no good reason to back out the FAULT_RECOMPUTE
+  code).
+  If the FAULT_CACHE_SIG flag is set, then the first time we generate an
+  signed public key (to insert into an HSS signature), we store a hash of that
+  signed public key in the private key; if we ever regenerate it (because of a
+  reload), we'll compare the new hash with what's in the private key (and fail
+  if they differ).
+  If the FAULT_RECOMPUTE flag is set, we will redundently recompute the LMS
+  public keys (other than the top one), and if they get out of sync, fail.
+  Because a fault attack works by having two different public keys signed by
+  the same OTS private key, either of these methods protect against this.
+  You enable this protection by setting either the FAULT_RECOMPUTE or the
+  FAULT_CACHE_SIG in config.h to 1 and recompiling (or you could turn on
+  both, if you are extra paranoid, and don't mind both costs).
+  The costs of FAULT_RECOMPUTE: we increase both the signature generation
   time (althogh multithreading helps here; we place the additional
   computation into additional threads) and key load time (multithreading
   doesn't help - we already max out the number of threads), and we
   increase our memory footprint somewhat.  Note that if you use L=1, then
   fault attacks aren't actually a concern (and you also don't get charged
-  the additional costs).
+  the additional computational costs).
+  The costs of FAULT_CACHE_SIG: this increases the size of the private key.
+  In addition, if you're using the autoreserve feature (to decrease the
+  number of writes to NVRAM), this may increase it somewhat (because sometimes
+  we'll need to update the hsahes in the private key, even when our
+  reservation isn't quite up yet.  However, the additional computational costs
+  are minimal.
   
 - Threading architecture
   We support doing operations on multiple threads, however we'd rather not

@@ -299,7 +299,11 @@ bool hss_set_autoreserve(
 size_t hss_get_private_key_len(unsigned levels,
                    const param_set_t *lm_type,
                    const param_set_t *lm_ots_type);
-#define HSS_MAX_PRIVATE_KEY_LEN (4 + 8 + 8 + 8 + 8 + SEED_LEN)
+
+/*
+ * We guarrantee that the private key length will never exceed this
+ */
+#define HSS_MAX_PRIVATE_KEY_LEN (4 + 8 + 8 + 7*32 + 8 + 8 + SEED_LEN)
 
 /*
  * This include file has the functions that contains the lengths of the other
@@ -424,8 +428,10 @@ enum hss_error_code hss_extra_info_test_error_code( struct hss_extra_info * );
 
 /*
  * Allow applications (mainly, the fault regression test) check on the
- * fault hardening flag
+ * fault hardening flag.
+ * If the parameter is 0, this is checking on any fault hardening
+ * If the paraemter is 1, this is specfically checking on CACHE_SIG 
  */
-bool hss_is_fault_hardening_on(void);
+bool hss_is_fault_hardening_on(int);
 
 #endif /* HSS_H_ */

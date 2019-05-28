@@ -103,8 +103,9 @@ static void compute_private_key_checksum(
 static const unsigned char expected_format[ PRIVATE_KEY_FORMAT_LEN ] = {
     0x01,  /* Current format version */
     SECRET_METHOD ? SECRET_MAX : 0xff,  /* Secret method marker */
-    0,     /* Reserved for future use */
-    0
+    FAULT_CACHE_SIG ? FAULT_CACHE_LEN : 0, /* Do we store hashed sigs */
+                     /* in the private key (and if so, how long are they) */
+    0      /* Reserved for future use */
 };
 
 void hss_set_private_key_format(unsigned char *private_key) {
@@ -152,9 +153,15 @@ enum hss_error_code hss_read_private_key(unsigned char *private_key,
  * the counter and the checksum
  */
 enum hss_error_code hss_write_private_key(unsigned char *private_key,
-            struct hss_working_key *w) {
+            struct hss_working_key *w, int num_cache_sig) {
+    int extra = 0;
+#if FAULT_CACHE_SIG
+    /* If we're also saving cached signatures, extend the area we write */
+    /* to include the updated signatures */
+    extra = num_cache_sig * FAULT_CACHE_LEN;
+#endif
     return hss_write_private_key_no_w( private_key,
-              PRIVATE_KEY_CHECKSUM + PRIVATE_KEY_CHECKSUM_LEN, 
+              PRIVATE_KEY_CHECKSUM + PRIVATE_KEY_CHECKSUM_LEN + extra, 
               w->read_private_key, w->update_private_key, w->context );
 }
 
@@ -174,12 +181,12 @@ enum hss_error_code hss_write_private_key_no_w(
         if (!update_private_key( private_key, len, context )) {
             return hss_error_private_key_write_failed;
         }
-#if FAULT_HARDENING
+#if FAULT_RECOMPUTE
         /* Double check that the write went through */
         /* Note: read_private_key is null only during the initial write */
         /* during key generation; errors there don't break security */
         /* Q: this is relatively cheap; should we do this even if */
-        /*    !FAULT_HARDENING ??? */
+        /*    !FAULT_RECOMPUTE && !FAULT_CACHE_SIG ??? */
         if (read_private_key) {
             unsigned char private_key_check[PRIVATE_KEY_LEN];
             if (!read_private_key( private_key_check, PRIVATE_KEY_LEN,
@@ -303,6 +310,53 @@ enum hss_error_code hss_extra_info_test_error_code( struct hss_extra_info *p ) {
     return p->error_code;
 }
 
-bool hss_is_fault_hardening_on(void) {
-    return FAULT_HARDENING;
+/*
+ * This is here to allow the regression tests to make inquiries to part of
+ * the config; what tests run (and how they run) depend, at times, on the
+ * config
+ */
+bool hss_is_fault_hardening_on(int type) {
+    switch (type) {
+    case 0:   /* 0 -> is fault hardening on? */
+         return FAULT_RECOMPUTE | FAULT_CACHE_SIG;
+    case 1:   /* 1 -> are with caching sigs (and if so, what's the hash */
+              /*      length that we're using) */
+         return FAULT_CACHE_SIG ? FAULT_CACHE_LEN : 0;
+    default: return 0;
+    }
 }
+
+#if FAULT_CACHE_SIG
+/* Check if a buffer is all-zeros.  Used only if we're storing hashes of */
+/* signatures in the private key */
+bool hss_all_zero( unsigned char *s, size_t len) {
+    while (len--) {
+        if (*s++ != 0)
+            return false;
+    }
+    return true;
+}
+
+/* This hashes a signature (which signs an internal root) into a value that */
+/* is stored in the private key */
+/* The data we're hashing is public; hence we don't bother zeroizing */
+bool hss_compute_hash_for_cache( unsigned char *hash_output,
+                                 const unsigned char *sig, size_t sig_len ) {
+    unsigned char hash[ MAX_HASH ];
+    union hash_context ctx;
+
+    /* Compute the hash.  Since this hash is not externally exposed, we */
+    /* can use a fixed SHA-256 hash */
+    hss_set_hash_reason(h_reason_sig_hash);
+    hss_hash_ctx( hash, HASH_SHA256, &ctx, sig, sig_len );
+
+    /* We use the 'all-zero' value to mean 'this hash hasn't been computed */
+    /* yet'.  If the hash just happens to be that, set one of the bits */
+    if (hss_all_zero( hash, FAULT_CACHE_LEN )) {
+        hash[0] = 0x01;
+    }
+
+    memcpy( hash_output, hash, FAULT_CACHE_LEN );
+    return true;
+}
+#endif

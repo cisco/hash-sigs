@@ -8,8 +8,8 @@
  *
  * That is, it is possible that a hash miscomputation might cause us
  * to sign two different messages with the same OTS; the whole point
- * of this exercise is to make sure, with FAULT_HARDENING on, this
- * cannot happen
+ * of this exercise is to make sure, with FAULT_RECOMPUTE or FAULT_CACHE_SIG
+ * on, this cannot happen
  *
  * This instrumentation code is able to introduce errors at fairly
  * precise places (e.g. the next level 1 OTS public key generation)
@@ -46,10 +46,12 @@ enum hash_reason {
                            /* also used for initial hash of the message */
                            /* and signature verification */
    h_reason_merkle,        /* Performing hashes within the Merkle tree */
-   h_reason_derive,        /* Deriving OTS privat keys */
+   h_reason_derive,        /* Deriving OTS private keys */
    h_reason_derive_iseed,  /* Deriving I and seed values */
    h_reason_derive_c,      /* Deriving message randomizer */
    h_reason_priv_checksum, /* Computing a private key checksum */
+   h_reason_sig_hash,      /* Computing a hash of a signature (for the */
+                           /* CACHE_SIG logic) */
    h_reason_other          /* The miscilaneous category; aux file */
                            /* computations, root seed/I generation */
                            /* These are ones where a fault is unlikely */

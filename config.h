@@ -25,15 +25,46 @@
 #define DEFAULT_THREAD 16 /* Go with 16 threads by default */
 
 /*
- * This determines whether we do the extra work to catch internal faults
+ * We provide two different methods to be resiliant against fault attacks.
+ * Both these methods have costs (but very different costs); if fault attacks
+ * are a concern for your implementation, you should enable one (or both of
+ * them if you're feeling especially paranoid, they are mutually compatible)
+ */
+
+/*
+ * Method 1 for fault tolerance: when we initially compute the signature for
+ * an internal root node, we store it (actually, the hash of the signed
+ * public key) in the private key.  Then, if we ever need to compute that
+ * signature again, we compare hashes; if they're different, then a fault
+ * that could have leaked the private key has occurred
+ * 0 -> We don't.
+ * 1 -> We do.  This has the cost of expanding the size of the private key
+ *      by 7*FAULT_CACHE_LEN bytes; it also can cause us to update the private
+ *      key more often than expected (if you use reservations)
+ */
+#define FAULT_CACHE_SIG  0
+
+/*
+ * If we cache hashes of signatures (FAULT_CACHE_SIG), then this determines
+ * the length of the hash we use; if FAULT_CACHE_LEN < 32, we truncate the
+ * hash.  This is here because we generally don't need to store the entire
+ * hash (unless we assume that the attacker can generate a precise fault at a
+ * specific spot in the computation, and he has enough computational resources
+ * to do a second preimage attack on a truncated hash), and shortening the
+ * hash reduces the space used by a private key.
+ */
+#define FAULT_CACHE_LEN   16
+
+/*
+ * Method 2 for fault tolerance: compute hashes twice, and compare the results
  * Note that the goal of this is to prevent errors that would cause us
  * to leak information that would allow forgeries; errors that only cause us
  * to produce invalid signatures are not of concern.
  * 0 -> We don't.
  * 1 -> We do.  This has the extra cost of increassing load and signature
- *      generation times, and memory consumption
+ *      generation times, and increased memory consumption
  */
-#define FAULT_HARDENING  0
+#define FAULT_RECOMPUTE  0
 
 /*
  * This modifies which seed generation logic we use

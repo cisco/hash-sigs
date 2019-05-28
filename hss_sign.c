@@ -225,7 +225,7 @@ static int generate_merkle_signature(
     return 1;
 }
 
-#if FAULT_HARDENING
+#if FAULT_RECOMPUTE
 /*
  * Verify that the Merkle signature is what we are supposed to generate
  * Hmmmm, do we really need to double-check anythhing other than the OTS
@@ -333,7 +333,7 @@ void hss_step_tree(struct merkle_level *tree) {
     tree->current_index += 1;
 }
 
-#if FAULT_HARDENING
+#if FAULT_RECOMPUTE
 /*
  * This checks the siganture of the root of the tree against what was
  * previously signed, making sure that we signed what we expect.
@@ -423,7 +423,7 @@ static void do_gen_sig( const void *detail, struct thread_collection *col) {
         goto failed;
     }
     hss_step_tree(w->tree[0][ levels-1 ]);
-#if FAULT_HARDENING
+#if FAULT_RECOMPUTE
     if (levels > 1) {
         hss_step_tree(w->tree[1][ levels-1 ]);
     }
@@ -621,7 +621,7 @@ bool hss_generate_signature(
         current_count <<= tree->level;
             /* We subtract 1 because the nonbottom trees are already advanced */
         current_count += (sequence_t)tree->current_index - 1;
-#if FAULT_HARDENING
+#if FAULT_RECOMPUTE
         struct merkle_level *tree_redux = w->tree[1][i];
         if (tree->level != tree_redux->level ||
             tree->current_index != tree_redux->current_index) {
@@ -633,9 +633,9 @@ bool hss_generate_signature(
     }
     current_count += 1;   /* Bottom most tree isn't already advanced */
 
-    /* Ok, try to advance the private key */
-    if (!hss_advance_count(w, current_count, info, &trash_private_key)) {
-        /* hss_advance_count fills in the error reason */
+    /* Ok, check if we hit the end of the private key */
+    if (!hss_check_end_key(w, current_count, info, &trash_private_key)) {
+        /* hss_check_end_key fills in the error reason */
         goto failed;
     }
 
@@ -667,7 +667,7 @@ bool hss_generate_signature(
     /* Update the bottom level next tree */
     if (levels > 1) {
         int redux;
-        for (redux = 0; redux <= FAULT_HARDENING; redux++) {
+        for (redux = 0; redux <= FAULT_RECOMPUTE; redux++) {
             struct step_next_detail step_detail;
             step_detail.w = w;
             step_detail.tree = w->tree[redux][levels-1];
@@ -679,7 +679,7 @@ bool hss_generate_signature(
     }
     /* Issue orders to step each of the building subtrees in the bottom tree */
     int redux;
-    for (redux = 0; redux <= FAULT_HARDENING; redux++) {
+    for (redux = 0; redux <= FAULT_RECOMPUTE; redux++) {
         if (redux == 1 && levels == 1) continue;
 
         int skipped_a_level = 0;   /* Set if the below issued didn't issue */
@@ -744,7 +744,8 @@ dont_bother_updating_trees:
      * At the same time, we check to see if we need to advance the subtrees
      */
     if (trash_private_key) goto dont_update_these_either;
-    for (redux = 0; redux <= FAULT_HARDENING; redux++) {
+    int num_sig_updated = 0;
+    for (redux = 0; redux <= FAULT_RECOMPUTE; redux++) {
         struct merkle_level *tree;
         unsigned merkle_levels_below = 0;
         int switch_merkle = w->levels;
@@ -851,7 +852,7 @@ done_advancing:
              /* Generate the signature of the new level */
              hss_set_level(i-1);  /* Now we'll work with the parent */
                                     /* tree hashes */
-#if FAULT_HARDENING
+#if FAULT_RECOMPUTE
              /* Double check the signature we make last iteration */
              if (redux) {
                  if (!hss_doublecheck_signed_public_key( w->signed_pk[i], w->siglen[i-1],
@@ -868,16 +869,24 @@ done_advancing:
                     info->error_code = hss_error_internal;
                     goto failed;
                  }
+                 num_sig_updated += 1;
 
                  /* Mark that we've generated a signature, UNLESS we'll be */
                  /* using the tree with the redux == 1 iteration.  In that */
                  /* case, we'll step the tree then */
-                 if (!FAULT_HARDENING || i > 1) {
+                 if (!FAULT_RECOMPUTE || i > 1) {
                      hss_step_tree( parent );
                 }
             }
         }
     }
+
+    /* Now, update the NVRAM private key */
+    if (!hss_advance_count(w, current_count, info, num_sig_updated)) {
+        /* hss_check_end fills in the error reason */
+        goto failed;
+    }
+
 dont_update_these_either:
 
     /* And we've set things up for the next signature... */

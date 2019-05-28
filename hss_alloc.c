@@ -190,7 +190,7 @@ signed long initial_mem_target = mem_target; /* DEBUG HACK */
     }
     for (i=0; i<MAX_HSS_LEVELS; i++) {
         int redux;
-        for (redux = 0; redux <= FAULT_HARDENING; redux++) {
+        for (redux = 0; redux <= FAULT_RECOMPUTE; redux++) {
              w->tree[redux][i] = NULL;
         }
     }
@@ -301,7 +301,7 @@ signed long initial_mem_target = mem_target; /* DEBUG HACK */
         size_t mem = compute_level_memory_usage(i, subtree,
                        level_height[i], hash_size[i], &subtree_levels[i],
                         &stack_used );
-#if FAULT_HARDENING
+#if FAULT_RECOMPUTE
         if (i > 0) {
             /* Non-top levels are replicated; hence double the cost */
             stack_used *= 2;
@@ -368,7 +368,7 @@ signed long initial_mem_target = mem_target; /* DEBUG HACK */
         signed long mem = compute_level_memory_usage(i, j,
                        level_height[i], hash_size[i], &subtree_levels[i],
                        &stack_used );
-#if FAULT_HARDENING
+#if FAULT_RECOMPUTE
         if (levels > 1) {
             /* If we use more than one level, this bottom level */
             /* is replicated */
@@ -457,8 +457,8 @@ printf( "Allocation = %ld\n", initial_mem_target - mem_target + best_mem ); /* D
      */
     for (i = 0; i<levels; i++) {
         int redux;
-        for (redux = 0; redux <= FAULT_HARDENING; redux++) {
-#if FAULT_HARDENING
+        for (redux = 0; redux <= FAULT_RECOMPUTE; redux++) {
+#if FAULT_RECOMPUTE
             if (i == 0 && redux == 1) {
                 /* Special case; we don't have a redundent tree for the */
                 /* top level */
@@ -563,7 +563,7 @@ void hss_free_working_key(struct hss_working_key *w) {
     for (i=0; i<MAX_HSS_LEVELS; i++) {
         free_tree(w->tree[0][i]);
     }
-#if FAULT_HARDENING
+#if FAULT_RECOMPUTE
     for (i=1; i<MAX_HSS_LEVELS; i++) {
         free_tree(w->tree[1][i]);
     }

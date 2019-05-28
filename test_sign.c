@@ -147,25 +147,6 @@ static bool test_parm( int d, long num_sig, ... ) {
              free(sig);
              return false;
         }
-
-        /* Try to generate a signature with a buffer when the update fails */
-        force_fail = true;
-        success = hss_generate_signature( w,
-                      message, sizeof message,
-                      sig, sig_size, &info );
-        force_fail = false;
-        if (success || !all_zeros(sig, sig_size)) {
-             printf( "Error: signature succeeded when key update failed\n" );
-             hss_free_working_key(w);
-             free(sig);
-             return false;
-        }
-        if (hss_extra_info_test_error_code(&info) != hss_error_private_key_write_failed) {
-             printf( "Error: update failure gives wrong error\n" );
-             hss_free_working_key(w);
-             free(sig);
-             return false;
-        }
     }
 
     bool retval = true;
@@ -262,6 +243,32 @@ static bool test_parm( int d, long num_sig, ... ) {
 
         /* If the signature was too short, fail */
         if (offset != sig_size) goto failed;
+    }
+
+    if (i == 2000) {
+        struct hss_extra_info info;
+        hss_init_extra_info( &info );
+
+        /* Try to generate a signature with a buffer when the update fails */
+        /* We do this at the end because it'll advance the current count, */
+        /* which would the above test doesn't expect */
+        force_fail = true;
+        bool success = hss_generate_signature( w,
+                      message, sizeof message,
+                      sig, sig_size, &info );
+        force_fail = false;
+        if (success || !all_zeros(sig, sig_size)) {
+             printf( "Error: signature succeeded when key update failed\n" );
+             hss_free_working_key(w);
+             free(sig);
+             return false;
+        }
+        if (hss_extra_info_test_error_code(&info) != hss_error_private_key_write_failed) {
+             printf( "Error: update failure gives wrong error\n" );
+             hss_free_working_key(w);
+             free(sig);
+             return false;
+        }
     }
 
     hss_free_working_key(w);

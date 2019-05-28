@@ -91,7 +91,11 @@ bool hss_validate_signature(
     /* key to use to validate the top level signature */
     public_key += 4;
 
-    struct thread_collection *col = hss_thread_init(info->num_threads);
+    /* Note: if we're verifying a 1-level tree, there really is no point */
+    /* to multithreading */
+    int num_threads = (levels == 1) ? 1 : info->num_threads;
+
+    struct thread_collection *col = hss_thread_init(num_threads);
     enum hss_error_code got_error = hss_error_none;
     struct verify_detail detail;
     detail.got_error = &got_error;

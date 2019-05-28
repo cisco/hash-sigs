@@ -29,14 +29,23 @@
                                  /* everyone */
 #define PRIVATE_KEY_CHECKSUM (PRIVATE_KEY_INDEX + PRIVATE_KEY_INDEX_LEN)
 #define PRIVATE_KEY_CHECKSUM_LEN 8
-#define PRIVATE_KEY_MAX   (PRIVATE_KEY_CHECKSUM + PRIVATE_KEY_CHECKSUM_LEN)
+#if FAULT_CACHE_SIG
+#define PRIVATE_KEY_SIG_CACHE (PRIVATE_KEY_CHECKSUM + PRIVATE_KEY_CHECKSUM_LEN)
+#define PRIVATE_KEY_SIG_CACHE_LEN ((MAX_HSS_LEVELS-1) * FAULT_CACHE_LEN)
+#define PRIVATE_KEY_END_WRITABLE (PRIVATE_KEY_SIG_CACHE+PRIVATE_KEY_SIG_CACHE_LEN)
+#else
+#define PRIVATE_KEY_END_WRITABLE (PRIVATE_KEY_CHECKSUM+PRIVATE_KEY_CHECKSUM_LEN)
+#endif
+/* PRIVATE_KEY_END_WRITABLE is the end of the part of the private key */
+/* that is dynamically written as the key is used */
+#define PRIVATE_KEY_MAX   PRIVATE_KEY_END_WRITABLE
 #define PRIVATE_KEY_MAX_LEN 8
 #define PRIVATE_KEY_PARAM_SET (PRIVATE_KEY_MAX + PRIVATE_KEY_MAX_LEN)
 #define PRIVATE_KEY_PARAM_SET_LEN (PARAM_SET_COMPRESS_LEN * MAX_HSS_LEVELS)
 #define PRIVATE_KEY_SEED (PRIVATE_KEY_PARAM_SET + PRIVATE_KEY_PARAM_SET_LEN)
 #define PRIVATE_KEY_SEED_LEN SEED_LEN
 #define PRIVATE_KEY_LEN (PRIVATE_KEY_SEED + PRIVATE_KEY_SEED_LEN) /* That's */
-                                                                /* 68 bytes */
+                                    /* 68 bytes, plus 7*FAULT_CACHE_LEN */
 
 /*
  * Routines to read/update the private key
@@ -44,7 +53,7 @@
 enum hss_error_code hss_read_private_key(unsigned char *private_key,
             struct hss_working_key *w);
 enum hss_error_code hss_write_private_key(unsigned char *private_key,
-            struct hss_working_key *w);
+            struct hss_working_key *w, int num_cache_sig);
 enum hss_error_code hss_write_private_key_no_w(
             unsigned char *private_key, size_t len,
             bool (*read_private_key)(unsigned char *private_key,
@@ -99,7 +108,7 @@ struct hss_working_key {
                                   /* current root value, signed by the */
                                   /* previous level.  Unused for the */
                                   /* topmost level */
-    struct merkle_level *tree[FAULT_HARDENING+1][MAX_HSS_LEVELS]; /* The */
+    struct merkle_level *tree[FAULT_RECOMPUTE+1][MAX_HSS_LEVELS]; /* The */
                                   /* structures that manage each individual */
                                   /* level.  The [1] versions are redundant */
                                   /* copies used to double check */
@@ -234,7 +243,7 @@ bool hss_create_signed_public_key(unsigned char *signed_key,
                                     struct merkle_level *tree,
                                     struct merkle_level *parent,
                                     struct hss_working_key *w);
-#if FAULT_HARDENING
+#if FAULT_RECOMPUTE
 bool hss_doublecheck_signed_public_key(const unsigned char *signed_key,
                                     size_t len_signature,
                                     struct merkle_level *tree,
@@ -287,5 +296,9 @@ void validate_internal_sig(const void *data,
 struct seed_derive;
 void lm_ots_generate_randomizer(unsigned char *c, unsigned n,
                                 struct seed_derive *seed);
+
+bool hss_all_zero( unsigned char *s, size_t len);
+bool hss_compute_hash_for_cache( unsigned char *hash_output,
+                                 const unsigned char *sig, size_t sig_len );
 
 #endif /* HSS_INTERNAL_H_ */

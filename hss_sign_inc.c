@@ -51,7 +51,7 @@ bool hss_sign_init(
     }
 
     struct merkle_level *bottom = w->tree[0][ w->levels - 1 ];
-#if FAULT_HARDENING
+#if FAULT_RECOMPUTE
     struct merkle_level *bottom_redux = w->tree[1][ w->levels - 1 ];
     if (bottom->current_index != bottom_redux->current_index) {
         info->error_code = hss_error_internal;

@@ -171,7 +171,7 @@ bool lm_ots_generate_signature(
     return true;
 }
 
-#if FAULT_HARDENING
+#if FAULT_RECOMPUTE
 bool lm_ots_doublecheck_signature(
     param_set_t lm_ots_type,
     const unsigned char *I, /* Public key identifier */

@@ -162,7 +162,8 @@ static bool test_corrupt_private_key(void) {
     for (i=0; i<len_priv_key; i++) {
         unsigned char priv_key_corrupt[HSS_MAX_PRIVATE_KEY_LEN];
         memcpy( priv_key_corrupt, priv_key, HSS_MAX_PRIVATE_KEY_LEN );
-        priv_key_corrupt[i] ^= (i - WHICH_GOOD);
+           /* This corrupts the key unless i == WHICH_GOOD */
+        priv_key_corrupt[i] ^= (i - WHICH_GOOD) | (i >> 8);
 
         struct hss_extra_info info;
         hss_init_extra_info( &info );

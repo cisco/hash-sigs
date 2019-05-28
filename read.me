@@ -1,5 +1,5 @@
 This code attempts to be a usable implementation of of the LMS Hash Based
-Signature Scheme from draft-mcgrew-hash-sigs-15.
+Signature Scheme from RFC 8554.
 
 This is a signature scheme (that is, someone with the private key can sign
 messages, someone with the public key can verify sigantures, but cannot
@@ -102,7 +102,7 @@ Statefulness; we do several things to mitigate this issue:
     generation, signature generation or reservation (see below)), we have
     the application provide a function that is supposed to write the new
     state to secure storage; the signature is not released to the application
-    (actually, not even generated) unless that function claims success.
+    unless that function claims success.
   - There's quite a lot of state involved with this package.  However, instead
     of writing all that to secure storage, what we do is write a summary.
     On a program reload, we read ("load") that summary back into memory,
@@ -116,7 +116,7 @@ Statefulness; we do several things to mitigate this issue:
     update.  Hence, we can move much of the work to time where we would have
     been idle. 
 Signature size; we can't actually do anything about the signature format
-(that's fixed in the draft), however what we can do is try to make selecting
+(that's fixed in the RFC), however what we can do is try to make selecting
 a parameter set with a short signature reasonable:
   - Efficiency; we try to make it efficient; efficiency allows you to use
     more aggressive parameter sets (chiefly, ones with W=8, and relatively few
@@ -273,7 +273,7 @@ real applications really ought not do.
 General notes:
 
 - Advice about parameter sets: while this supports all the HSS parameter sets
-  currently allowed in draft-mcgrew-hash-sigs-08, some work better than others
+  currently allowed in RFC 8554, some work better than others
   The general recommendation is to use a few large trees (that is, with lots
   of levels), rather than using a number of levels of smaller trees; this
   package tries to make large trees not that costly (and reducing the number

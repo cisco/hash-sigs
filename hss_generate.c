@@ -7,7 +7,7 @@
  * The code is made considerably more complex because we try to take
  * advantage of parallelism.  To do this, we explicitly list the parts
  * of the subtrees we need to build (which is most of the computation), and
- * have different worker threads build the various parts,
+ * have different worker threads build the various parts.
  *
  * However, it turns out that this is sometimes insufficient; sometimes,
  * the work consists of one or two expensive nodes (perhaps the top level
@@ -20,7 +20,7 @@
  * levels below (and have the main thread do the final computation when
  * all the threads are completed).
  *
- * This works out pretty good; however man does add complexity :-(
+ * This works out pretty good; however man does it add complexity :-(
  */
 #include <string.h>
 #include <limits.h>
@@ -301,7 +301,7 @@ bool hss_generate_working_key(
         for (i=0; i<w->levels; i++) {
             lm_type[i] = w->tree[0][i]->lm_type;
             lm_ots_type[i] = w->tree[0][i]->lm_ots_type;
-#if FAULT_HARDENING
+#if FAULT_RECOMPUTE
             if (lm_type[i] != w->tree[1][i]->lm_type ||
                     lm_ots_type[i] != w->tree[1][i]->lm_ots_type) {
                 info->error_code = hss_error_internal;
@@ -363,7 +363,7 @@ bool hss_generate_working_key(
         unsigned index = count & tree->max_index;
         count >>= tree->level;
         tree->current_index = index;
-#if FAULT_HARDENING
+#if FAULT_RECOMPUTE
         struct merkle_level *tree_redux = w->tree[1][i];
         if (tree_redux->max_index != tree->max_index ||
                 tree_redux->level != tree->level) {
@@ -377,7 +377,7 @@ bool hss_generate_working_key(
     /* Initialize the I values */
     for (i = 0; i < w->levels; i++) {
         int redux;
-        for (redux = 0; redux <= FAULT_HARDENING; redux++) {
+        for (redux = 0; redux <= FAULT_RECOMPUTE; redux++) {
             if (i == 0 && redux == 1) continue;
 
             struct merkle_level *tree = w->tree[redux][i];
@@ -388,7 +388,7 @@ bool hss_generate_working_key(
                 hss_generate_root_seed_I_value( tree->seed, tree->I,
                                                 private_key+PRIVATE_KEY_SEED );
                 /* We don't use the I_next value */
-#if FAULT_HARDENING
+#if FAULT_RECOMPUTE
                 /*
                  * Double-check the values we just computed
                  * Note that a failure here won't actually allow a forgery;
@@ -455,7 +455,7 @@ bool hss_generate_working_key(
         /* There are enough structures in this array to handle the maximum */
         /* number of orders we'll ever see */
     struct init_order order[MAX_HSS_LEVELS * MAX_SUBLEVELS * NUM_SUBTREE *
-                            (1 + FAULT_HARDENING) ];
+                            (1 + FAULT_RECOMPUTE) ];
     struct init_order *p_order = order;
     int count_order = 0;
 
@@ -463,7 +463,7 @@ bool hss_generate_working_key(
     /* the orders to initialize the bottoms of the subtrees that we'll need */
     for (i = w->levels - 1; i >= 0 ; i--) {
         int redux;
-        for (redux = 0; redux <= FAULT_HARDENING; redux++) {
+        for (redux = 0; redux <= FAULT_RECOMPUTE; redux++) {
             if (i == 0 && redux == 1) continue;
             struct merkle_level *tree = w->tree[redux][i];
             unsigned hash_size = tree->hash_size;
@@ -986,6 +986,9 @@ bool hss_generate_working_key(
      * Again, we could parallelize this; it's also fast enough not to be worth
      * the complexity
      */
+#if FAULT_CACHE_SIG
+    int num_updated_caches = 0;
+#endif
     for (i = 1; i < w->levels; i++) {
         hss_set_level(i-1);
         if (!hss_create_signed_public_key( w->signed_pk[i], w->siglen[i-1],
@@ -994,7 +997,7 @@ bool hss_generate_working_key(
                                                    /* happen */
             goto failed;
         }
-#if FAULT_HARDENING
+#if FAULT_RECOMPUTE
         /* Now double check the signature we just made */
         if (!hss_doublecheck_signed_public_key( w->signed_pk[i],
                                        w->siglen[i-1],
@@ -1002,12 +1005,39 @@ bool hss_generate_working_key(
             info->error_code = hss_error_fault_detected;
             goto failed;
         }
-
+#endif
+#if FAULT_CACHE_SIG
+        /* Check if the signature is the same as what we generated last time */
+        {
+            int sig_index = (w->levels - i - 1);
+            unsigned char *sig_cache = &w->private_key[
+                         PRIVATE_KEY_SIG_CACHE + sig_index * FAULT_CACHE_LEN ];
+            unsigned char sig_hash[ MAX_HASH ];
+            hss_set_level(i-1);
+            if (!hss_compute_hash_for_cache( sig_hash, w->signed_pk[i],
+                                              w->siglen[i-1] )) {
+                info->error_code = hss_error_internal; /* Really shouldn't */
+                                                       /* happen */
+                goto failed;
+            }
+            if (hss_all_zero( sig_cache, FAULT_CACHE_LEN )) {
+                /* We've never computed this signature before; store it */
+                memcpy( sig_cache, sig_hash, FAULT_CACHE_LEN );
+                    /* Remember to update the NVRAM */
+                if (num_updated_caches < sig_index+1) {
+                    num_updated_caches = sig_index + 1;
+                }
+            } else if (0 != memcmp( sig_cache, sig_hash, FAULT_CACHE_LEN )) {
+                /* The siganture does't match what we did before - error */
+                info->error_code = hss_error_fault_detected;
+                goto failed;
+            }
+        }
 #endif
         /* We generated a signature, mark it from the parent */
         hss_step_tree( w->tree[0][i-1] );
 
-#if FAULT_HARDENING
+#if FAULT_RECOMPUTE
         /* Also mark it from the redundent tree (if it's not top-level) */
         if (i > 1) {
             hss_step_tree( w->tree[1][i-1] );
@@ -1022,10 +1052,26 @@ bool hss_generate_working_key(
      */
     for (i = 0; i < w->levels - 1; i++) {
         int redux;
-        for (redux = 0; redux <= FAULT_HARDENING; redux++) {
+        for (redux = 0; redux <= FAULT_RECOMPUTE; redux++) {
             w->tree[redux][i]->update_count = UPDATE_DONE;
         }
     }
+
+#if FAULT_CACHE_SIG
+    /*
+     * Check if we computed any signatures for the first time; if so, then
+     * we'll need to save those in NVRAM (so they'll be available the next
+     * time we compute them)
+     */
+    if (num_updated_caches > 0) {
+        enum hss_error_code e = hss_write_private_key( 
+                             w->private_key, w, num_updated_caches );
+        if (e != hss_error_none) {
+            info->error_code = e;
+            goto failed;
+        }
+    }
+#endif   
 
     w->status = hss_error_none; /* This working key has been officially */
                                 /* initialized, and now can be used */
@@ -1037,7 +1083,7 @@ failed:
     /* Clear out any seeds we may have placed in the Merkle trees */
     for (i = 0; i < MAX_HSS_LEVELS; i++) {
         int redux;
-        for (redux = 0; redux <= FAULT_HARDENING; redux++) {
+        for (redux = 0; redux <= FAULT_RECOMPUTE; redux++) {
             struct merkle_level *tree = w->tree[redux][i];
             if (tree) {
                 hss_zeroize(tree->seed, sizeof tree->seed);
