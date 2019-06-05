@@ -16,7 +16,7 @@ struct seed_derive {
     merkle_index_t q;
     unsigned j;
 #if SECRET_METHOD == 2
-    int hash;       /* Hash function to use */
+    unsigned hash;  /* Hash function to use */
     unsigned m;     /* Length of hash function */
 #endif
 
