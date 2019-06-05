@@ -326,8 +326,12 @@ bool hss_generate_working_key(
         /* Initialize the I, I_next elements */
         if (i == 0) {
             /* The root seed, I value is derived from the secret key */
-            hss_generate_root_seed_I_value( tree->seed, tree->I,
-                                            private_key+PRIVATE_KEY_SEED );
+            if (!hss_generate_root_seed_I_value( tree->seed, tree->I,
+                                        private_key+PRIVATE_KEY_SEED,
+                                        tree->lm_type, tree->lm_ots_type )) {
+                info->error_code = hss_error_internal;
+                goto failed;
+            }
             /* We don't use the I_next value */
         } else {
             /* The seed, I is derived from the parent's values */
@@ -336,22 +340,33 @@ bool hss_generate_working_key(
             struct merkle_level *parent = w->tree[i-1];
             merkle_index_t index = parent->current_index;
 
-            hss_generate_child_seed_I_value( tree->seed, tree->I,
+            if (!hss_generate_child_seed_I_value( tree->seed, tree->I,
                                              parent->seed,  parent->I,
                                              index, parent->lm_type,
-                                             parent->lm_ots_type );
+                                             parent->lm_ots_type )) {
+                info->error_code = hss_error_internal;
+                goto failed;
+            }
             /* The next seed, I is derived from either the parent's I */
             /* or the parent's next value */
             if (index == tree->max_index) {
-                hss_generate_child_seed_I_value( tree->seed_next, tree->I_next,
+                if (!hss_generate_child_seed_I_value(
+                                            tree->seed_next, tree->I_next,
                                             parent->seed_next,  parent->I_next,
                                             0, parent->lm_type, 
-                                            parent->lm_ots_type);
+                                            parent->lm_ots_type)) {
+                    info->error_code = hss_error_internal;
+                    goto failed;
+                }
             } else {
-                hss_generate_child_seed_I_value( tree->seed_next, tree->I_next,
+                if (!hss_generate_child_seed_I_value(
+                                            tree->seed_next, tree->I_next,
                                             parent->seed,  parent->I,
                                             index+1, parent->lm_type,
-                                            parent->lm_ots_type);
+                                            parent->lm_ots_type)) {
+                    info->error_code = hss_error_internal;
+                    goto failed;
+                }
             }
         }
     }

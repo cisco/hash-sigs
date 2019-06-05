@@ -371,6 +371,9 @@ sources.
   secret).  This is controlled by the SECRET_METHOD and SECRET_MAX #defines
   found in hss_derive.h.  SECRET_METHOD==0 means that we don't worry that much
   (and we use the LM-OTS key generation procedure found in Appendix A).
+  SECRET_METHOD==2 means that we use the same procedure that ACVP expects to
+  translate seed values to the random values used. It's a variation of the
+  SECRET_METHOD==0 method, and isn't designed to be side-channel resistant.
   SECRET_METHOD==1 means that the number of times we use any secret is
   bounded to a maximum of 2**SECRET_MAX times.  In this method, we derive
   keys using a tree-based process, with each node having up to 2**SECRET_MAX

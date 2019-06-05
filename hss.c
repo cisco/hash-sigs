@@ -13,6 +13,8 @@
 #include "hss_internal.h"
 #include "hss_aux.h"
 #include "hss_derive.h"
+#include "config.h"
+#include "lm_ots_common.h"
 
 /*
  * Allocate and load an ephemeral key
@@ -57,18 +59,57 @@ struct hss_working_key *hss_load_private_key(
     return w;
 }
 
+#if SECRET_METHOD == 2
+/*
+ * This maps the SEED value to the I value, which is defined in the ACVP
+ * compatible key derivation method
+ */
+static bool generate_I_value_from_seed(unsigned char *I,
+                   const unsigned char *seed, param_set_t ots_parm_set) {
+    unsigned hash;
+    if (!lm_ots_look_up_parameter_set(ots_parm_set, &hash, 0, 0, 0, 0))
+        return false;
+
+    unsigned char hash_preimage[PRG_MAX_LEN];
+
+    memset( hash_preimage + PRG_I, 0, I_LEN ); /* We don't have an I value */
+                                               /* yet, so use a default one */
+    memset( hash_preimage + PRG_Q, 0, 4 ); /* This is not specific to a */
+                                           /* particular leaf node */
+    SET_D( hash_preimage + PRG_J, SEED_CHILD_I ); /* This is the j value */
+                                           /* that specifies "this is an I" */
+    hash_preimage[PRG_FF] = 0xff;
+    memcpy( hash_preimage + PRG_SEED, seed, SEED_LEN );
+    unsigned char hash_postimage[MAX_HASH];
+
+    hss_hash(hash_postimage, hash, hash_preimage, PRG_LEN(SEED_LEN));
+
+    memcpy( I, hash_postimage, 16 ); 
+  
+    hss_zeroize(hash_preimage, sizeof hash_preimage); /* Seed info here */
+    return true;
+}
+#endif
 
 /*
  * Internal function to generate the root seed and I value (based on the
  * private seed).  We do this (rather than select seed, I at random) so that
  * we don't need to store it in our private key; we can recompute them
- *
- * We use a two-level hashing scheme so that we end up using the master seed
- * only twice throughout the system (once here, once to generate the aux
- * hmac key)
  */
-void hss_generate_root_seed_I_value(unsigned char *seed, unsigned char *I,
-                                    const unsigned char *master_seed) {
+bool hss_generate_root_seed_I_value(unsigned char *seed, unsigned char *I,
+                                    const unsigned char *master_seed,
+                                    param_set_t lm, param_set_t ots) {
+#if SECRET_METHOD == 2
+    /* In ACVP mode, we use the master seed as the seed for the top level */
+    /* LMS tree, and derive the I value from that */
+    if (!generate_I_value_from_seed(I, master_seed, ots)) return false;
+    memcpy( seed, master_seed, SEED_LEN );
+#else
+    /*
+     * We use a two-level hashing scheme so that we end up using the master
+     * seed only twice throughout the system (once here, once to generate the
+     * aux hmac key)
+     */
     unsigned char hash_preimage[ TOPSEED_LEN ];
     unsigned char hash_postimage[ MAX_HASH ];
 
@@ -103,6 +144,8 @@ void hss_generate_root_seed_I_value(unsigned char *seed, unsigned char *I,
     hss_zeroize( hash_preimage, sizeof hash_preimage );  /* There's keying */
                                                        /* data here */
     hss_zeroize( &ctx, sizeof ctx );
+#endif
+    return true;
 }
 
 /*
@@ -112,29 +155,40 @@ void hss_generate_root_seed_I_value(unsigned char *seed, unsigned char *I,
  * So we use a fixed SHA256; when we support a hash function other than SHA256,
  * we needn't update this.
  */
-void hss_generate_child_seed_I_value( unsigned char *seed, unsigned char *I,
+bool hss_generate_child_seed_I_value( unsigned char *seed, unsigned char *I,
                    const unsigned char *parent_seed,
                    const unsigned char *parent_I,
                    merkle_index_t index,
                    param_set_t lm, param_set_t ots) {
     struct seed_derive derive;
     if (!hss_seed_derive_init( &derive, lm, ots, parent_I, parent_seed )) {
-        return;
+        return false;
     }
 
     hss_seed_derive_set_q( &derive, index );
 
     /* Compute the child seed value */
     hss_seed_derive_set_j( &derive, SEED_CHILD_SEED );
-    hss_seed_derive( seed, &derive, true );
+    hss_seed_derive( seed, &derive, SECRET_METHOD != 2 );
         /* True sets the j value to SEED_CHILD_I */
-   
-    /* Compute the child I value */ 
+
+#if SECRET_METHOD == 2
+    /* Map the child SEED value to the I value */
+    if (!generate_I_value_from_seed(I, seed, ots)) {
+        hss_zeroize(seed, SEED_LEN);
+        return false;
+    }
+#else
+    /* Compute the child I value; with increment_j set to true in the */ 
+    /* above call, derive has been set to the SEED_CHILD_I position */
     unsigned char postimage[ SEED_LEN ];
     hss_seed_derive( postimage, &derive, false );
     memcpy( I, postimage, I_LEN );
+#endif
 
     hss_seed_derive_done( &derive );
+
+    return true;
 }
 
 void hss_init_extra_info( struct hss_extra_info *p ) {

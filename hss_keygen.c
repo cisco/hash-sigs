@@ -156,7 +156,12 @@ bool hss_generate_private_key(
 
     unsigned char I[I_LEN];
     unsigned char seed[SEED_LEN];
-    hss_generate_root_seed_I_value( seed, I, private_key+PRIVATE_KEY_SEED );
+    if (!hss_generate_root_seed_I_value( seed, I, private_key+PRIVATE_KEY_SEED,
+                                    lm_type[0], lm_ots_type[0])) {
+        info->error_code = hss_error_internal;
+        hss_zeroize( private_key, sizeof private_key );
+        return false;
+    }
 
     /* Now, it's time to generate the public key, which means we need to */
     /* compute the entire top level Merkle tree */

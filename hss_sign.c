@@ -675,15 +675,21 @@ done_advancing:
         /* I or the parent's I_next value */
         merkle_index_t index = parent->current_index;
         if (index == parent->max_index) {
-            hss_generate_child_seed_I_value(tree->seed_next, tree->I_next,
+            if (!hss_generate_child_seed_I_value(tree->seed_next, tree->I_next,
                                        parent->seed_next, parent->I_next, 0,
                                        parent->lm_type,
-                                       parent->lm_ots_type);
+                                       parent->lm_ots_type)) {
+                info->error_code = hss_error_internal;
+                goto failed;
+            }
         } else {
-            hss_generate_child_seed_I_value( tree->seed_next, tree->I_next,
+            if (!hss_generate_child_seed_I_value(tree->seed_next, tree->I_next,
                                        parent->seed, parent->I, index+1,
                                        parent->lm_type,
-                                       parent->lm_ots_type);
+                                       parent->lm_ots_type)) {
+                info->error_code = hss_error_internal;
+                goto failed;
+            }
          }
 
          tree->current_index = 0;  /* We're starting this from scratch */
