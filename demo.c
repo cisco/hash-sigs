@@ -24,6 +24,10 @@
  *       This takes the public key in keyname.pub, and uses it to verify
  *       whether file.1.sig is a valid signature for file.1, file.2.sig is
  *       a valid signature for file.2, etc
+ *   demo advance keyname [integer]
+ *       This takes the private key keyname.prf, and advances it [integer]
+ *       places; that is, makes it assume it has generated [integer]
+ *       signatures (without doing the work)
  */
 
 #include <stdio.h>
@@ -604,12 +608,84 @@ static int verify(const char *keyname, char **files) {
     return 1;
 }
 
+/*
+ * This function implements the 'advance' command; it loads the private key,
+ * and then tries to advance it the given number of posiitons.
+ */
+static int advance(const char *keyname, const char *text_advance) {
+    /* Check if the advance value makes sense */
+    int advance = atoi( text_advance );
+    if (advance <= 0) {
+        printf( "Illegal amount to advance %s (%d)\n", text_advance, advance );
+        return 0;
+    }
+
+    int private_key_filename_len = strlen(keyname) + sizeof (".prv" ) + 1;
+    char *private_key_filename = malloc(private_key_filename_len);
+    if (!private_key_filename) {
+        printf( "Malloc failure\n" );
+        return 0;
+    }
+    sprintf( private_key_filename, "%s.prv", keyname );
+
+        /* Read in the auxilliary file */   
+    size_t aux_filename_len = strlen(keyname) + sizeof (".aux" ) + 1;
+    char *aux_filename = malloc(aux_filename_len);
+    if (!aux_filename) {
+        printf( "Malloc failure\n" );
+        free(private_key_filename);
+        return 0;
+    }
+    sprintf( aux_filename, "%s.aux", keyname );
+    size_t len_aux_data = 0;
+    void *aux_data = read_file( aux_filename, &len_aux_data );
+    if (aux_data != 0) {
+        printf( "Processing with aux data\n" );
+    } else {
+        /* We don't have the aux data; proceed without it */
+        printf( "Processing without aux data\n" );
+    }
+
+        /* Load the working key into memory */
+    printf( "Loading private key\n" );
+    fflush(stdout);
+    struct hss_working_key *w = hss_load_private_key(
+             read_private_key, private_key_filename, /* How to load the */
+                                         /* private key */
+             0,                          /* Use minimal memory */
+             aux_data, len_aux_data,     /* The auxiliary data */
+             0);                         /* Use the defaults for extra info */
+    free(aux_data);
+    free(aux_filename);
+    if (!w) {
+        printf( "Error loading private key\n" );
+        hss_free_working_key(w);
+        free(private_key_filename);
+        return 0;
+    }
+
+    /* Now that we've loaded the private key, use the reservation call */
+    /* to fast-forward it */
+    bool success = hss_reserve_signature( w,
+             update_private_key, private_key_filename,
+             advance, 0 );
+    if (!success) {
+        printf( "Error advancing\n" );
+    }
+
+    /* Whether or not that succeeded, we're all done */
+    hss_free_working_key(w);
+    free(private_key_filename);
+    return success;
+}
+
 static void usage(char *program) {
     printf( "Usage:\n" );
     printf( " %s genkey [keyname]\n", program );
     printf( " %s genkey [keyname] [parameter set]\n", program );
     printf( " %s sign [keyname] [files to sign]\n", program );
     printf( " %s verify [keyname] [files to verify]\n", program );
+    printf( " %s advance [keyname] [amount of advance]\n", program );
 }
 
 static int get_integer(const char **p) {
@@ -760,6 +836,17 @@ int main(int argc, char **argv) {
         }
         if (!verify( argv[2], &argv[3] )) {
             printf( "Error verifying\n" );
+        }
+        return 0;
+    }
+    if (0 == strcmp( argv[1], "advance" )) {
+        if (argc != 4) {
+            printf( "Error: mssing amount to device the file\n" );
+            usage(argv[0]);
+            return 0;
+        }
+        if (!advance( argv[2], argv[3] )) {
+            printf( "Error advancing\n" );
         }
         return 0;
     }
