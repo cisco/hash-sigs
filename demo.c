@@ -609,8 +609,11 @@ static int verify(const char *keyname, char **files) {
 }
 
 /*
- * This function implements the 'advance' command; it loads the private key,
- * and then tries to advance it the given number of posiitons.
+ * This function implements the 'advance' command; which updates (that is,
+ * fast-forwards) the private key as if it were used to generate N signatures
+  (without actually having to generate them).
+ * It loads the private key, and then tries to advance it the given number of
+ * posiitons.
  */
 static int advance(const char *keyname, const char *text_advance) {
     /* Check if the advance value makes sense */
@@ -664,14 +667,20 @@ static int advance(const char *keyname, const char *text_advance) {
         return 0;
     }
 
-    /* Now that we've loaded the private key, use the reservation call */
-    /* to fast-forward it */
+        /* Now that we've loaded the private key, we fast-forward it */
+        /* We do this by reserving N signatures (which updates the private */
+        /* key to reflect that we've generated those signatures) */
     bool success = hss_reserve_signature( w,
              update_private_key, private_key_filename,
              advance, 0 );
     if (!success) {
         printf( "Error advancing\n" );
     }
+
+        /* Now, we've updated the private key.  If we were to generate */
+        /* N signatures, we wouldn't need to update the private key, */
+        /* however there's no requirement that we do so (and we don't */
+        /* need to, so we don't bother */
 
     /* Whether or not that succeeded, we're all done */
     hss_free_working_key(w);
