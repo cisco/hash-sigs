@@ -59,38 +59,6 @@ struct hss_working_key *hss_load_private_key(
     return w;
 }
 
-#if SECRET_METHOD == 2
-/*
- * This maps the SEED value to the I value, which is defined in the ACVP
- * compatible key derivation method
- */
-static bool generate_I_value_from_seed(unsigned char *I,
-                   const unsigned char *seed, param_set_t ots_parm_set) {
-    unsigned hash;
-    if (!lm_ots_look_up_parameter_set(ots_parm_set, &hash, 0, 0, 0, 0))
-        return false;
-
-    unsigned char hash_preimage[PRG_MAX_LEN];
-
-    memset( hash_preimage + PRG_I, 0, I_LEN ); /* We don't have an I value */
-                                               /* yet, so use a default one */
-    memset( hash_preimage + PRG_Q, 0, 4 ); /* This is not specific to a */
-                                           /* particular leaf node */
-    SET_D( hash_preimage + PRG_J, SEED_CHILD_I ); /* This is the j value */
-                                           /* that specifies "this is an I" */
-    hash_preimage[PRG_FF] = 0xff;
-    memcpy( hash_preimage + PRG_SEED, seed, SEED_LEN );
-    unsigned char hash_postimage[MAX_HASH];
-
-    hss_hash(hash_postimage, hash, hash_preimage, PRG_LEN(SEED_LEN));
-
-    memcpy( I, hash_postimage, 16 ); 
-  
-    hss_zeroize(hash_preimage, sizeof hash_preimage); /* Seed info here */
-    return true;
-}
-#endif
-
 /*
  * Internal function to generate the root seed and I value (based on the
  * private seed).  We do this (rather than select seed, I at random) so that
@@ -100,10 +68,10 @@ bool hss_generate_root_seed_I_value(unsigned char *seed, unsigned char *I,
                                     const unsigned char *master_seed,
                                     param_set_t lm, param_set_t ots) {
 #if SECRET_METHOD == 2
-    /* In ACVP mode, we use the master seed as the seed for the top level */
-    /* LMS tree, and derive the I value from that */
-    if (!generate_I_value_from_seed(I, master_seed, ots)) return false;
+    /* In ACVP mode, we use the master seed as the source for both the */
+    /* root seed, and the root I value */
     memcpy( seed, master_seed, SEED_LEN );
+    memcpy( I, master_seed + SEED_LEN, I_LEN );
 #else
     /*
      * We use a two-level hashing scheme so that we end up using the master
@@ -169,22 +137,14 @@ bool hss_generate_child_seed_I_value( unsigned char *seed, unsigned char *I,
 
     /* Compute the child seed value */
     hss_seed_derive_set_j( &derive, SEED_CHILD_SEED );
-    hss_seed_derive( seed, &derive, SECRET_METHOD != 2 );
+    hss_seed_derive( seed, &derive, true );
         /* True sets the j value to SEED_CHILD_I */
 
-#if SECRET_METHOD == 2
-    /* Map the child SEED value to the I value */
-    if (!generate_I_value_from_seed(I, seed, ots)) {
-        hss_zeroize(seed, SEED_LEN);
-        return false;
-    }
-#else
     /* Compute the child I value; with increment_j set to true in the */ 
     /* above call, derive has been set to the SEED_CHILD_I position */
     unsigned char postimage[ SEED_LEN ];
     hss_seed_derive( postimage, &derive, false );
     memcpy( I, postimage, I_LEN );
-#endif
 
     hss_seed_derive_done( &derive );
 

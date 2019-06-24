@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include "common_defs.h"
 #include "hss.h"
+#include "config.h"
 
 /*
  * This is the central internal include file for the functions that make up
@@ -27,7 +28,11 @@
 #define PRIVATE_KEY_PARAM_SET (PRIVATE_KEY_INDEX + PRIVATE_KEY_INDEX_LEN)
 #define PRIVATE_KEY_PARAM_SET_LEN (PARAM_SET_COMPRESS_LEN * MAX_HSS_LEVELS)
 #define PRIVATE_KEY_SEED (PRIVATE_KEY_PARAM_SET + PRIVATE_KEY_PARAM_SET_LEN)
+#if SECRET_METHOD == 2
+#define PRIVATE_KEY_SEED_LEN (SEED_LEN + I_LEN)
+#else
 #define PRIVATE_KEY_SEED_LEN SEED_LEN
+#endif
 #define PRIVATE_KEY_LEN (PRIVATE_KEY_SEED + PRIVATE_KEY_SEED_LEN) /* That's */
                                                                 /* 48 bytes */
 
