@@ -28,23 +28,21 @@ static bool test_aux( param_set_t lm_setting ) {
     param_set_t ots[2] = { LMOTS_SHA256_N32_W2, LMOTS_SHA256_N32_W2 };
     unsigned char priv_key[48];
     unsigned char len_pub_key = hss_get_public_key_len(levels, lm, ots);
-    if (!len_pub_key || len_pub_key > HSS_MAX_PUBLIC_KEY_LEN) return false;
-    unsigned char pub_key[HSS_MAX_PUBLIC_KEY_LEN];
+    if (!len_pub_key) return false;
+    unsigned char pub_key[len_pub_key];
     size_t len_sig = hss_get_signature_len(levels, lm, ots);
     if (!len_sig) return false;
-    unsigned char *sig = malloc(len_sig);
-    if (!sig) return false;
+    unsigned char sig[len_sig];
 
     int i;
-    unsigned char aux_data[50000];  /* 50000 is the largest auxdata we try */
     for (i=0; i<2; i++) {
         unsigned aux_size = (i ? 50000 : 500); 
+        unsigned char aux_data[aux_size];
         if (!hss_generate_private_key( rand_1, levels, lm, ots,
                                    NULL, priv_key,
                                    pub_key, sizeof pub_key,
                                    aux_data, aux_size, 0)) {
             printf( "Error generating private key\n" );
-            free(sig);
             return false;
         }
 
@@ -58,7 +56,6 @@ static bool test_aux( param_set_t lm_setting ) {
                       NULL, priv_key, 0, aux_data, aux_size, 0 );
         if (!w) {
             printf( "Error loading private key\n" );
-            free(sig);
             return false;
         }
 
@@ -66,25 +63,22 @@ static bool test_aux( param_set_t lm_setting ) {
         static unsigned char test_message[1] = "a";
         if (!hss_generate_signature(w, NULL, priv_key,
                              test_message, sizeof test_message,
-                             sig, len_sig, 0)) {
+                             sig, sizeof sig, 0)) {
             hss_free_working_key(w);
             printf( "Error generating signature\n" );
-            free(sig);
             return false;
         }
 
         /* Verify the signature */
         bool v = hss_validate_signature(pub_key,
                              test_message, sizeof test_message,
-                             sig, len_sig, 0);
+                             sig, sizeof sig, 0);
         hss_free_working_key(w);
         if (!v) {
             printf( "Error validating signature from altered aux\n" );
-            free(sig);
             return false;
         }
     }
-    free(sig);
 
     return true;
 }
