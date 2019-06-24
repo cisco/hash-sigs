@@ -14,6 +14,10 @@
  *       (and uses Winternitz parmaeter 8); up to 2000 bytes of aux data are
  *       used.  If you don't include the /x (Winternitz parameter) or the
  *       :2000 (aux data size), reasonable defaults are used
+ *   demo genkey keyname 15/4,10/8:2000 seed=0123456789abcdef i=fedcba98765432
+ *       This does the same, but instead of selecting a random seed and i
+ *       value, this uses the specified values for the top-level LMS tree
+ *       This is here to generate test vectors, not for real use
  *   demo sign keyname file.1 file.2 ... file.n
  *       This loads the private key keyname.prv (using keyname.aux if present)
  *       and then signs the files, producing the detached signatures
@@ -52,8 +56,12 @@
    /* good load times (perhaps 1 second), and a billion signatures per key */
 const char *default_parm_set = "20/8,10/8";
 
-#define DEFAULT_AUX_DATA 8740   /* Use 8+k of aux data (which works well */
+#define DEFAULT_AUX_DATA 10916   /* Use 10+k of aux data (which works well */
                             /* with the above default parameter set) */
+
+static const char *seedbits = 0;
+static const char *i_value = 0;
+static bool convert_specified_seed_i_value( void *, size_t );
 
 /*
  * The HSS routines assume 3 user provided routines; here are the ones
@@ -68,6 +76,12 @@ const char *default_parm_set = "20/8,10/8";
 #include "hash.h"
 #include "hss_zeroize.h"
 bool do_rand( void *output, size_t len ) {
+    if (seedbits) {
+        /* The seed was specified on the command line */
+        /* Return that exact seed and i */
+        /* This is not something a real application should do */
+        return convert_specified_seed_i_value( output, len );
+    }
     struct {
         unsigned char dev_random_output[32];
         int rand_output[16];
@@ -177,6 +191,8 @@ static bool read_private_key( unsigned char *private_key,
     return true;
 }
 
+/* The above where the 3 routimes that the LMS library needs */
+
 /*
  * This will read in the file into a malloc'ed area
  * The hss routines assume that everything public keys, auxilary data and
@@ -214,6 +230,42 @@ void *read_file( const char *filename, size_t *len ) {
 
     if (len) *len = cur_len;
     return p;
+}
+
+static int fromhex(char c) {
+    if (isdigit(c)) return c - '0';
+    switch (c) {
+    case 'a': case 'A': return 10;
+    case 'b': case 'B': return 11;
+    case 'c': case 'C': return 12;
+    case 'd': case 'D': return 13;
+    case 'e': case 'E': return 14;
+    case 'f': case 'F': return 15;
+    default: return 0;  /* Turn any nonhexdigit into a 0 */
+    }
+}
+
+/*
+ * This is used if the user maually specified the seed and the
+ * i values
+ * This converts what the user specified into the format that
+ * the library expects
+ */
+static bool convert_specified_seed_i_value( void *buffer, size_t len) {
+    int i;
+    const char *in = seedbits; 
+    unsigned char *out = buffer;
+    for (i=0; i<len; i++) {
+        /* After 32 bytes of seed, then comes the i value */
+        if (i == 32) {
+            in = i_value;
+        }
+        int c = fromhex(*in); if (*in) in++;
+        int d = fromhex(*in); if (*in) in++;
+        *out++ = 16*c + d;
+    }
+
+    return true;
 }
 
 static int parse_parm_set(int *levels, param_set_t *lm_array,
@@ -321,6 +373,13 @@ static int keygen(const char *keyname, const char *parm_set) {
         /* Close failed (possibly because pending write failed) */
         free(aux);
         return 0;
+    }
+
+    /* If the key was specified manually, put in our warning */
+    if (seedbits) {
+        fprintf( stderr,
+               "*** Warning: the key was not generated manually\n"
+               "    This key should not be used for real security\n" );
     }
 
     if (aux_size > 0) {
@@ -804,24 +863,64 @@ static void list_parameter_set(int levels, const param_set_t *lm_array,
     }
 }
 
+static const char *check_prefix( const char *s, const char *prefix ) {
+    while (*prefix) {
+        if (*s++ != *prefix++)
+            return 0;
+    }
+    return s;
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) {
         usage(argv[0]);
         return 0;
     }
     if (0 == strcmp( argv[1], "genkey" )) {
-        if (argc < 3) {
-            printf( "Error: mssing keyname argument\n" );
-            usage(argv[0]);
-            return 0;
-        }
-        if (argc > 4) {
+        const char *keyname = 0;
+        const char *parmname = 0;
+        int i;
+        for (i=2; i<argc; i++) {
+            const char *s;
+            if ((s = check_prefix( argv[i], "seed=" ))) {
+                if (seedbits) {
+                    printf( "Error: seed specified twice\n" );
+                    return 0;
+                }
+                seedbits = s;
+                continue;
+            }
+            if ((s = check_prefix( argv[i], "i=" ))) {
+                if (i_value) {
+                    printf( "Error: i specified twice\n" );
+                    return 0;
+                }
+                i_value = s;
+                continue;
+            }
+            if (!keyname) {
+                keyname = argv[i];
+                continue;
+            }
+            if (!parmname) {
+                parmname = argv[i];
+                continue;
+            }
             printf( "Error: unexpected argument after parmset\n" );
             usage(argv[0]);
             return 0;
         }
+        if (!keyname) {
+            printf( "Error: missing keyname argument\n" );
+            usage(argv[0]);
+            return 0;
+        }
+        if (!seedbits != !i_value) {
+            printf( "Error: must either specified both seed and i, or neither\n" );
+            return 0;
+        }
 
-        if (!keygen( argv[2], argv[3] )) {
+        if (!keygen( keyname, parmname )) {
             printf( "Error creating keys\n" );
         }
         return 0;
