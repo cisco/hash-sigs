@@ -161,12 +161,10 @@ feature-centric order, rather than a problem-centric one:
   private key into three parts:
   - A short section which is meant to be saved in secure storage (and this is
     the part which is referred to as the 'private key'; this includes the
-    number of signatures generated so far.  It's currently 48 bytes long
-    (with the part that needs to be actually updated only 8 bytes), we assume
-    that it is updated atomically.  These 48 bytes consist of an 8 byte count
-    of the number of sigantures generated so far, 8 bytes of a compressed
-    version of the parameter set, and 32 bytes of 'seed' (a random value that
-    is used to derive every secret)
+    number of signatures generated so far.  It's currently 70 bytes long (for
+    a two level HSS tree with the default configuration).  The part that needs
+    to be updated dynamically is only 20-28 bytes; we assume that it is
+    updated atomically.
   - A longer section (the "working key") that resides in memory; we assume
     that this is private, but need not be saved into long term (nonvolatile)
     storage.  This section include the Merkle tree contents (actually, a
@@ -586,3 +584,13 @@ likely not to implement it:
   private keys, however only if all the other parameters (e.g. SECRET_METHOD)
   also lined up (which may mean that it might not be a great idea to rely
   on that)
+
+  Two ideas aimed to reducing the amount of RAM used:
+
+- We've figured out how to store both the ACTIVE_TREE and the BUILDING_TREE
+  into the same data structure (saving some memory); should we try to
+  take advantage of that?  That may make the generate logic more complicated
+
+- For the non-bottom Merkle trees, the BDS logic (rather than fractal)
+  would make sense (takes more updates, but we don't care about that).  That
+  would save a bit of memory - should we try?

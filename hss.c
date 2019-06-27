@@ -79,6 +79,9 @@ static void compute_private_key_checksum(
                   const unsigned char *private_key ) {
     union hash_context ctx;
     unsigned char hash[MAX_HASH];
+    unsigned levels = private_key[ PRIVATE_KEY_FORMAT_NUM_LEVEL ];
+    if (levels > MAX_HSS_LEVELS) levels = MAX_HSS_LEVELS; /* Actually, */
+                                                           /* an error */
 
         /* Hash everything except the checksum */
     hss_set_level(0);
@@ -88,7 +91,7 @@ static void compute_private_key_checksum(
                              private_key, PRIVATE_KEY_CHECKSUM );
     hss_update_hash_context( HASH_SHA256, &ctx,
              private_key + PRIVATE_KEY_CHECKSUM + PRIVATE_KEY_CHECKSUM_LEN,
-             PRIVATE_KEY_LEN -
+             PRIVATE_KEY_LEN(levels) -
                     (PRIVATE_KEY_CHECKSUM + PRIVATE_KEY_CHECKSUM_LEN ));
     hss_finalize_hash_context( HASH_SHA256, &ctx,
              hash );
@@ -105,19 +108,20 @@ static const unsigned char expected_format[ PRIVATE_KEY_FORMAT_LEN ] = {
     SECRET_METHOD ? SECRET_MAX : 0xff,  /* Secret method marker */
     FAULT_CACHE_SIG ? FAULT_CACHE_LEN : 0, /* Do we store hashed sigs */
                      /* in the private key (and if so, how long are they) */
-    0      /* Reserved for future use */
+    0      /* Number of tree levels goes here */
 };
 
-void hss_set_private_key_format(unsigned char *private_key) {
+void hss_set_private_key_format(unsigned char *private_key, int levels) {
     memcpy( private_key + PRIVATE_KEY_FORMAT, expected_format,
             PRIVATE_KEY_FORMAT_LEN );
+    private_key[PRIVATE_KEY_FORMAT_NUM_LEVEL] = levels;
 }
 
 bool hss_check_private_key(const unsigned char *private_key) {
     /* If the key isn't in the format we expect, it's a bad key (or, at */
     /* least, it's unusable by us) */
     if (0 != memcmp( private_key + PRIVATE_KEY_FORMAT, expected_format,
-                                                 PRIVATE_KEY_FORMAT_LEN )) {
+                                           PRIVATE_KEY_FORMAT_LEN - 1 )) {
         return false;
     }
 
@@ -132,17 +136,29 @@ bool hss_check_private_key(const unsigned char *private_key) {
 
 enum hss_error_code hss_read_private_key(unsigned char *private_key,
             struct hss_working_key *w) {
+    int levels = w->levels;
+    if (levels < 1 || levels > MAX_HSS_LEVELS) {
+        return hss_error_internal;
+    }
     if (w->read_private_key) {
-        if (!w->read_private_key( private_key, PRIVATE_KEY_LEN, w->context)) {
-            hss_zeroize( private_key, PRIVATE_KEY_LEN );
+        unsigned char temp[ HSS_MAX_PRIVATE_KEY_LEN ];
+         if (!w->read_private_key( temp,
+                     PRIVATE_KEY_LEN(levels), w->context)) {
+            hss_zeroize(temp, sizeof temp );
+            hss_zeroize( private_key, PRIVATE_KEY_LEN(levels) );
             return hss_error_private_key_read_failed;
         }
+        memcpy( private_key, temp, PRIVATE_KEY_LEN(levels) );
+        hss_zeroize(temp, sizeof temp);
     } else {
-        memcpy( private_key, w->context, PRIVATE_KEY_LEN );
+        memcpy( private_key, w->context, PRIVATE_KEY_LEN(levels) );
     }
-
+    if (private_key[PRIVATE_KEY_FORMAT_NUM_LEVEL] != levels) {
+        hss_zeroize( private_key, PRIVATE_KEY_LEN(levels) );
+        return hss_error_incompatible_param_set;
+    }
     if (!hss_check_private_key(private_key)) { 
-        hss_zeroize( private_key, PRIVATE_KEY_LEN );
+        hss_zeroize( private_key, PRIVATE_KEY_LEN(levels) );
         return hss_error_bad_private_key;
     }
     return hss_error_none;
@@ -188,15 +204,19 @@ enum hss_error_code hss_write_private_key_no_w(
         /* Q: this is relatively cheap; should we do this even if */
         /*    !FAULT_RECOMPUTE && !FAULT_CACHE_SIG ??? */
         if (read_private_key) {
-            unsigned char private_key_check[PRIVATE_KEY_LEN];
-            if (!read_private_key( private_key_check, PRIVATE_KEY_LEN,
+            int levels = private_key[PRIVATE_KEY_FORMAT_NUM_LEVEL];
+            if (levels < 1 || levels > MAX_HSS_LEVELS) {
+                return hss_error_internal;
+            }
+            unsigned char private_key_check[HSS_MAX_PRIVATE_KEY_LEN];
+            if (!read_private_key( private_key_check, PRIVATE_KEY_LEN(levels),
                                    context )) {
-                hss_zeroize( private_key_check, PRIVATE_KEY_LEN );
+                hss_zeroize( private_key_check, sizeof private_key_check );
                 return hss_error_private_key_read_failed;
             }
             int cmp = memcmp( private_key, private_key_check,
-                              PRIVATE_KEY_LEN );
-            hss_zeroize( private_key_check, PRIVATE_KEY_LEN );
+                              PRIVATE_KEY_LEN(levels) );
+            hss_zeroize( private_key_check, sizeof private_key_check );
             if (cmp != 0) {
                  return hss_error_bad_private_key;
             }  
@@ -315,10 +335,10 @@ enum hss_error_code hss_extra_info_test_error_code( struct hss_extra_info *p ) {
  * the config; what tests run (and how they run) depend, at times, on the
  * config
  */
-bool hss_is_fault_hardening_on(int type) {
+int hss_is_fault_hardening_on(int type) {
     switch (type) {
     case 0:   /* 0 -> is fault hardening on? */
-         return FAULT_RECOMPUTE | FAULT_CACHE_SIG;
+         return FAULT_RECOMPUTE || FAULT_CACHE_SIG;
     case 1:   /* 1 -> are with caching sigs (and if so, what's the hash */
               /*      length that we're using) */
          return FAULT_CACHE_SIG ? FAULT_CACHE_LEN : 0;

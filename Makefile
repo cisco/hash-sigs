@@ -1,7 +1,7 @@
 AR = /usr/bin/ar
 CC = /usr/bin/gcc
-# CFLAGS = -Wall -O3
-CFLAGS = -Wall -g
+CFLAGS = -Wall -O3
+# CFLAGS = -Wall -g
 
 all: hss_lib.a \
      hss_lib_thread.a \
@@ -13,7 +13,7 @@ hss_lib.a: hss.o hss_alloc.o hss_aux.o hss_common.o \
      hss_compute.o hss_generate.o hss_keygen.o hss_param.o hss_reserve.o \
      hss_sign.o hss_sign_inc.o hss_thread_single.o \
      hss_verify.o hss_verify_inc.o hss_derive.o \
-     hss_derive.o hss_zeroize.o lm_common.o \
+     hss_derive.o hss_zeroize.o hss_malloc.o lm_common.o \
      lm_ots_common.o lm_ots_sign.o lm_ots_verify.o lm_verify.o endian.o \
      hash.o sha256.o
 	$(AR) rcs $@ $^
@@ -22,7 +22,7 @@ hss_lib_thread.a: hss.o hss_alloc.o hss_aux.o hss_common.o \
      hss_compute.o hss_generate.o hss_keygen.o hss_param.o hss_reserve.o \
      hss_sign.o hss_sign_inc.o hss_thread_pthread.o \
      hss_verify.o hss_verify_inc.o \
-     hss_derive.o hss_zeroize.o lm_common.o \
+     hss_derive.o hss_zeroize.o hss_malloc.o lm_common.o \
      lm_ots_common.o lm_ots_sign.o lm_ots_verify.o lm_verify.o endian.o \
      hash.o sha256.o
 	$(AR) rcs $@ $^
@@ -38,13 +38,13 @@ demo: demo.c hss_lib_thread.a
 test_1: test_1.c lm_ots_common.o lm_ots_sign.o lm_ots_verify.o  endian.o hash.o sha256.o hss_zeroize.o
 	$(CC) $(CFLAGS) -o test_1 test_1.c lm_ots_common.o lm_ots_sign.o lm_ots_verify.o  endian.o hash.o sha256.o hss_zeroize.o -lcrypto
 
-test_hss: test_hss.c test_hss.h test_testvector.c test_stat.c test_keygen.c test_load.c test_sign.c test_sign_inc.c test_verify.c test_verify_inc.c test_keyload.c test_reserve.c test_thread.c test_h25.c test_fault.c hss.h hss_lib_thread.a
-	$(CC) $(CFLAGS) test_hss.c test_testvector.c test_stat.c test_keygen.c test_sign.c test_sign_inc.c test_load.c test_verify.c test_verify_inc.c test_keyload.c test_reserve.c test_thread.c test_h25.c test_fault.c hss_lib_thread.a -lcrypto -lpthread -o test_hss
+test_hss: test_hss.c test_hss.h test_testvector.c test_stat.c test_keygen.c test_load.c test_sign.c test_sign_inc.c test_verify.c test_verify_inc.c test_keyload.c test_reserve.c test_thread.c test_h25.c test_fault.c test_update.c hss.h hss_lib_thread.a
+	$(CC) $(CFLAGS) test_hss.c test_testvector.c test_stat.c test_keygen.c test_sign.c test_sign_inc.c test_load.c test_verify.c test_verify_inc.c test_keyload.c test_reserve.c test_thread.c test_h25.c test_fault.c test_update.c hss_lib_thread.a -lcrypto -lpthread -o test_hss
 
 hss.o: hss.c hss.h common_defs.h hash.h endian.h hss_internal.h hss_aux.h hss_derive.h config.h
 	$(CC) $(CFLAGS) -c hss.c -o $@
 
-hss_alloc.o: hss_alloc.c hss.h hss_internal.h lm_common.h config.h
+hss_alloc.o: hss_alloc.c hss.h hss_internal.h lm_common.h config.h hss_malloc.h
 	$(CC) $(CFLAGS) -c hss_alloc.c -o $@
 
 hss_aux.o: hss_aux.c hss_aux.h hss_internal.h common_defs.h lm_common.h endian.h hash.h config.h
@@ -65,10 +65,13 @@ hss_generate.o: hss_generate.c hss.h hss_internal.h hss_aux.h hash.h hss_thread.
 hss_keygen.o: hss_keygen.c hss.h common_defs.h hss_internal.h hss_aux.h endian.h hash.h hss_thread.h lm_common.h lm_ots_common.h config.h
 	$(CC) $(CFLAGS) -c hss_keygen.c -o $@
 
+hss_malloc.o: hss_malloc.c hss.h config.h common_defs.h hss_malloc.h
+	$(CC) $(CFLAGS) -c hss_malloc.c -o $@
+
 hss_param.o: hss_param.c hss.h hss_internal.h endian.h hss_zeroize.h config.h
 	$(CC) $(CFLAGS) -c hss_param.c -o $@
 
-hss_reserve.o: hss_reserve.c common_defs.h hss_internal.h hss_reserve.h endian.h config.h
+hss_reserve.o: hss_reserve.c hss.h common_defs.h hss_internal.h hss_reserve.h endian.h config.h
 	$(CC) $(CFLAGS) -c hss_reserve.c -o $@
    
 hss_sign.o: hss_sign.c common_defs.h hss.h hash.h endian.h hss_internal.h hss_aux.h hss_thread.h hss_reserve.h lm_ots.h lm_ots_common.h hss_derive.h config.h
@@ -83,10 +86,10 @@ hss_thread_single.o: hss_thread_single.c hss_thread.h config.h
 hss_thread_pthread.o: hss_thread_pthread.c hss_thread.h config.h
 	$(CC) $(CFLAGS) -c hss_thread_pthread.c -o $@
 
-hss_verify.o: hss_verify.c hss_verify.h common_defs.h lm_verify.h lm_common.h lm_ots_verify.h hash.h endian.h hss_thread.h config.h
+hss_verify.o: hss_verify.c hss.h hss_verify.h common_defs.h lm_verify.h lm_common.h lm_ots_verify.h hash.h endian.h hss_thread.h config.h
 	$(CC) $(CFLAGS) -c hss_verify.c -o $@
 
-hss_verify_inc.o: hss_verify_inc.c hss_verify_inc.h common_defs.h lm_verify.h lm_common.h lm_ots_verify.h hash.h endian.h hss_thread.h config.h
+hss_verify_inc.o: hss_verify_inc.c hss.h hss_verify_inc.h common_defs.h lm_verify.h lm_common.h lm_ots_verify.h hash.h endian.h hss_thread.h config.h
 	$(CC) $(CFLAGS) -c hss_verify_inc.c -o $@
 
 hss_zeroize.o: hss_zeroize.c hss_zeroize.h

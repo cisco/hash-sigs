@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stddef.h>
 #include "test_hss.h"
+#include "hss.h"
 
 /*
  * This is the list of tests we know about
@@ -16,7 +17,7 @@ static struct {
     const char *test_name;             /* Extended description */
     bool warn_expense;                 /* Should we warn that this test */
                                        /* will take a while in -full mode */
-    bool (*test_enabled)(bool);        /* Check if this tests is enabled */
+    bool (*test_enabled)(bool);        /* Check if this test is enabled */
 } test_list[] = {
     { "testvector", test_testvector, "test vectors from the draft", false },
     { "keygen", test_keygen, "key generation function test", false },
@@ -33,6 +34,7 @@ static struct {
         check_threading_on },
     { "h25", test_h25, "H=25 test", true, check_h25 },
     { "fault", test_fault, "fault test", true, check_fault_enabled },
+    { "update", test_update, "NVRAM update test", false },
  /* Add more here */  
 };
 
@@ -120,5 +122,14 @@ int main( int argc, char **argv ) {
         exit(EXIT_FAILURE);  /* FAILURE == We didn't pass the tests */
     }
 
-    return run_tests( tests_to_run, force_tests, fast_flag, quiet_flag );
+    int success = run_tests( tests_to_run, force_tests,
+                             fast_flag, quiet_flag );
+
+    /* Now that we've run the tests, check if there were memory leaks */
+    if (!hss_report_memory_leak()) {
+        /* A reported memory leak counts as a failure */
+        success = EXIT_FAILURE;
+    }
+
+    return success;
 }

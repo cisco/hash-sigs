@@ -42,7 +42,7 @@
  *      by 7*FAULT_CACHE_LEN bytes; it also can cause us to update the private
  *      key more often than expected (if you use reservations)
  */
-#define FAULT_CACHE_SIG  0
+#define FAULT_CACHE_SIG  1
 
 /*
  * If we cache hashes of signatures (FAULT_CACHE_SIG), then this determines
@@ -53,7 +53,7 @@
  * to do a second preimage attack on a truncated hash), and shortening the
  * hash reduces the space used by a private key.
  */
-#define FAULT_CACHE_LEN   16
+#define FAULT_CACHE_LEN   8
 
 /*
  * Method 2 for fault tolerance: compute hashes twice, and compare the results

@@ -8,6 +8,7 @@
 #include "hss.h"
 #include "hss_internal.h"
 #include "lm_common.h"
+#include "hss_malloc.h"
 
 #define MALLOC_OVERHEAD  8   /* Our simplistic model about the overhead */
                              /* that malloc takes up is that it adds 8 */
@@ -170,7 +171,7 @@ struct hss_working_key *allocate_working_key(
 signed long initial_mem_target = mem_target; /* DEBUG HACK */
 #endif
 
-    struct hss_working_key *w = malloc( sizeof *w );
+    struct hss_working_key *w = hss_malloc( sizeof *w, mu_working_key );
     if (!w) {
         info->error_code = hss_error_out_of_memory;
         return NULL;
@@ -185,7 +186,7 @@ signed long initial_mem_target = mem_target; /* DEBUG HACK */
     /* Initialize all the allocated data structures to NULL */
     /* We do this up front so that if we hit an error in the middle, we can */
     /* just free everything */
-    for (i=0; i<MAX_HSS_LEVELS-1; i++) {
+    for (i=0; i<MAX_HSS_LEVELS; i++) {
         w->signed_pk[i] = NULL;
     }
     for (i=0; i<MAX_HSS_LEVELS; i++) {
@@ -215,7 +216,7 @@ signed long initial_mem_target = mem_target; /* DEBUG HACK */
 
         w->signed_pk_len[i] = w->siglen[i-1] + pklen;
 
-        w->signed_pk[i] = malloc( w->signed_pk_len[i] );
+        w->signed_pk[i] = hss_malloc( w->signed_pk_len[i], mu_signed_pk );
         if (!w->signed_pk[i]) {
             hss_free_working_key(w);
             info->error_code = hss_error_out_of_memory;
@@ -441,7 +442,7 @@ printf( "Allocation = %ld\n", initial_mem_target - mem_target + best_mem ); /* D
         stack = NULL;   /* Hey!  No stack required */
                         /* Avoid the malloc, as malloc(0) is allowed to fail */
     } else {
-        stack = malloc(stack_usage);
+        stack = hss_malloc(stack_usage, mu_stack);
         if (!stack) {
             hss_free_working_key(w);
             info->error_code = hss_error_out_of_memory;
@@ -466,7 +467,7 @@ printf( "Allocation = %ld\n", initial_mem_target - mem_target + best_mem ); /* D
                 continue;
             }
 #endif
-            struct merkle_level *tree = malloc( sizeof *tree );
+            struct merkle_level *tree = hss_malloc( sizeof *tree, mu_tree );
             if (!tree) { 
                 hss_free_working_key(w);
                 info->error_code = hss_error_out_of_memory;
@@ -507,8 +508,8 @@ printf( "Allocation = %ld\n", initial_mem_target - mem_target + best_mem ); /* D
                     /* 'next subtree' */
                     if (k == NEXT_TREE && i == 0) continue;
     
-                    struct subtree *s = malloc( sizeof *s + hash_size[i] *
-                                                   (((size_t)2<<height)-1));
+                    struct subtree *s = hss_malloc( sizeof *s + hash_size[i] *
+                                      (((size_t)2<<height)-1), mu_subtree);
                     if (!s) {
                         hss_free_working_key(w);
                         info->error_code = hss_error_out_of_memory;
@@ -551,10 +552,10 @@ static void free_tree(struct merkle_level *tree) {
         unsigned j, k;
         for (j=0; j<MAX_SUBLEVELS; j++)
             for (k=0; k<3; k++)
-                free(tree->subtree[j][k]);
+                hss_free(tree->subtree[j][k]);
         hss_zeroize( tree, sizeof *tree ); /* We have seeds here */
     }
-    free(tree);
+    hss_free(tree);
 }
 
 void hss_free_working_key(struct hss_working_key *w) {
@@ -568,10 +569,10 @@ void hss_free_working_key(struct hss_working_key *w) {
         free_tree(w->tree[1][i]);
     }
 #endif
-    for (i=0; i<MAX_HSS_LEVELS-1; i++) {
-        free(w->signed_pk[i]);
+    for (i=0; i<MAX_HSS_LEVELS; i++) {
+        hss_free(w->signed_pk[i]);
     }
-    free(w->stack);
+    hss_free(w->stack);
     hss_zeroize( w, sizeof *w ); /* We have secret information here */
-    free(w);
+    hss_free(w);
 }

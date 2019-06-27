@@ -598,7 +598,8 @@ bool hss_generate_signature(
     /* If we're given a raw private key, make sure it's the one we're */
     /* thinking of */
     if (!w->update_private_key) {
-        if (0 != memcmp( w->context, w->private_key, PRIVATE_KEY_LEN)) {
+        if (0 != memcmp( w->context, w->private_key,
+                                            PRIVATE_KEY_LEN(w->levels))) {
             info->error_code = hss_error_key_mismatch;
             return false;   /* Private key mismatch */
         }
@@ -892,7 +893,7 @@ dont_update_these_either:
     /* And we've set things up for the next signature... */
 
     if (trash_private_key) {
-        memset( w->private_key, PARM_SET_END, PRIVATE_KEY_LEN );
+        memset( w->private_key, 0xff, sizeof w->private_key );
     }
 
     return true;
@@ -900,7 +901,7 @@ dont_update_these_either:
 failed:
 
     if (trash_private_key) {
-        memset( w->private_key, PARM_SET_END, PRIVATE_KEY_LEN );
+        memset( w->private_key, 0xff, sizeof w->private_key );
     }
 
     /* On failure, make sure that we don't return anything that might be */

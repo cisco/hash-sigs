@@ -33,6 +33,7 @@
 #include "lm_ots_common.h"
 #include "endian.h"
 #include "hss_fault.h"
+#include "hss_malloc.h"
 
 #define DO_FLOATING_POINT 1  /* If clear, we avoid floating point operations */
     /* You can turn this off for two reasons: */
@@ -278,7 +279,7 @@ bool hss_generate_working_key(
     w->context = context;     
 
     /* Read the private key */
-    unsigned char private_key[ PRIVATE_KEY_LEN ];
+    unsigned char private_key[ PRIVATE_KEY_LEN(MAX_HSS_LEVELS) ];
     enum hss_error_code e = hss_read_private_key( private_key, w );
     if (e != hss_error_none) {
         info->error_code = e;
@@ -295,7 +296,7 @@ bool hss_generate_working_key(
             info->error_code = hss_error_internal;
             goto failed;
         }
-        unsigned char compressed[PRIVATE_KEY_PARAM_SET_LEN];
+        unsigned char compressed[PRIVATE_KEY_PARAM_SET_LEN(MAX_HSS_LEVELS)];
         param_set_t lm_type[MAX_HSS_LEVELS], lm_ots_type[MAX_HSS_LEVELS];
         int i;
         for (i=0; i<w->levels; i++) {
@@ -317,8 +318,8 @@ bool hss_generate_working_key(
             info->error_code = hss_error_internal;
             goto failed;
         }
-        if (0 != memcmp( private_key + PRIVATE_KEY_PARAM_SET, compressed,
-                      PRIVATE_KEY_PARAM_SET_LEN )) {
+        if (0 != memcmp( private_key + PRIVATE_KEY_PARAM_SET(w->levels),
+                      compressed, PRIVATE_KEY_PARAM_SET_LEN(w->levels) )) {
                /* The working set was initiallized with a different parmset */
             info->error_code = hss_error_incompatible_param_set;
             goto failed;
@@ -333,8 +334,11 @@ bool hss_generate_working_key(
             info->error_code = hss_error_internal;
             goto failed;
         }
+
+        /* Get the maximum count allowed by the private key */
         sequence_t max_count_key = get_bigendian(
-                    private_key + PRIVATE_KEY_MAX, PRIVATE_KEY_MAX_LEN );
+                    private_key + PRIVATE_KEY_MAX(w->levels),
+                                                  PRIVATE_KEY_MAX_LEN );
         if (max_count_key > max_count_parm_set) {
                /* The max from the key cannot exceed the parm set */
             info->error_code = hss_error_bad_private_key;
@@ -351,7 +355,7 @@ bool hss_generate_working_key(
     }
     hss_set_reserve_count(w, current_count);
 
-    memcpy( w->private_key, private_key, PRIVATE_KEY_LEN );
+    memcpy( w->private_key, private_key, PRIVATE_KEY_LEN(w->levels) );
 
     /* Initialize all the levels of the tree */
 
@@ -386,7 +390,7 @@ bool hss_generate_working_key(
             if (i == 0) {
                 /* The root seed, I value is derived from the secret key */
                 hss_generate_root_seed_I_value( tree->seed, tree->I,
-                                                private_key+PRIVATE_KEY_SEED );
+                                  private_key+PRIVATE_KEY_SEED(w->levels) );
                 /* We don't use the I_next value */
 #if FAULT_RECOMPUTE
                 /*
@@ -398,7 +402,7 @@ bool hss_generate_working_key(
                 unsigned char I_redux[I_LEN];
                 unsigned char seed_redux[SEED_LEN];
                 hss_generate_root_seed_I_value( seed_redux, I_redux,
-                                            private_key+PRIVATE_KEY_SEED );
+                                  private_key+PRIVATE_KEY_SEED(w->levels) );
                 int same = (0 == memcmp(tree->I, I_redux, I_LEN ) &&
                             0 == memcmp(tree->seed, seed_redux, SEED_LEN));
                 hss_zeroize( seed_redux, sizeof seed_redux );
@@ -762,7 +766,8 @@ bool hss_generate_working_key(
         size_t total_hash = (hash_len * count_nodes) << subdiv;
         unsigned h_subtree = (subtree->level == 0) ? tree->top_subtree_size :
                                                      tree->subtree_size;
-        struct sub_order *sub = malloc( sizeof *sub + total_hash );
+        struct sub_order *sub = hss_malloc( sizeof *sub + total_hash,
+                                                               mu_suborder );
         if (!sub) continue;  /* On malloc failure, don't bother trying */
                              /* to subdivide */
 
@@ -902,7 +907,7 @@ bool hss_generate_working_key(
 #if DO_FLOATING_POINT
             /* Don't leak suborders on an intermediate error */
         for (i=0; i<count_order; i++) {
-            free( order[i].sub );
+            hss_free( order[i].sub );
         }
 #endif
         info->error_code = got_error;
@@ -938,7 +943,7 @@ bool hss_generate_working_key(
                           hash_size, tree->h, I);
         }
 
-        free( sub );
+        hss_free( sub );
         p_order->sub = 0;
     }
 #endif

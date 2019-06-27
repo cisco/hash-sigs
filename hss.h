@@ -302,6 +302,7 @@ size_t hss_get_private_key_len(unsigned levels,
 
 /*
  * We guarrantee that the private key length will never exceed this
+ * This is a conservative value, which is true for any config.h setting
  */
 #define HSS_MAX_PRIVATE_KEY_LEN (4 + 8 + 8 + 7*32 + 8 + 8 + SEED_LEN)
 
@@ -357,8 +358,8 @@ bool hss_get_parameter_set( unsigned *levels,
 enum hss_error_code {
     hss_error_none = 0,      /* I don't know nothing about any error */
 
-    hss_range_normal_failures, /* There errors happen during normal use */
-                             /* of the signature scheme */
+    hss_range_normal_failures = 100, /* There errors happen during normal */
+                             /* use of the signature scheme */
     hss_error_bad_signature, /* Invalid signature */
     hss_error_private_key_expired, /* This private key has generated all */
                              /* the signatures it is allowed */
@@ -366,7 +367,7 @@ enum hss_error_code {
                              /* because the key couldn't do that many  */
                              /* signatures */
 
-    hss_range_bad_parameters, /* These errors are cause by the */
+    hss_range_bad_parameters = 200, /* These errors are cause by the */
                           /* application passing in a bad parameter */
     hss_error_no_randomness, /* No RNG supplied */
     hss_error_bad_param_set, /* Application asked for an illegal parmaeter */
@@ -390,7 +391,7 @@ enum hss_error_code {
     hss_error_bad_public_key, /* Somehow, we got an invalid public key */
     hss_error_bad_private_key, /* Somehow, we got an invalid private key */
 
-    hss_range_processing_error, /* These errors are cause by an */
+    hss_range_processing_error = 300, /* These errors are cause by an */
                              /* error while processing */
     hss_error_bad_randomness, /* The RNG claimed failure */
     hss_error_private_key_write_failed, /* The write of the private key */
@@ -399,7 +400,7 @@ enum hss_error_code {
                              /* from NVRAM failed */
     hss_error_out_of_memory, /* A malloc failure caused us to fail */
 
-    hss_range_my_problem,    /* These are caused by internal errors */
+    hss_range_my_problem = 400, /* These are caused by internal errors */
                              /* within the HSS implementation */
     hss_error_internal,      /* Some internal assertion failed (should */
                              /* never happen) */
@@ -432,6 +433,12 @@ enum hss_error_code hss_extra_info_test_error_code( struct hss_extra_info * );
  * If the parameter is 0, this is checking on any fault hardening
  * If the paraemter is 1, this is specfically checking on CACHE_SIG 
  */
-bool hss_is_fault_hardening_on(int);
+int hss_is_fault_hardening_on(int);
+
+/*
+ * Do a report on any detected memory leaks; will be ignored if
+ * instrumentation is disabled.  Will return TRUE if none were detected
+ */
+bool hss_report_memory_leak(void);
 
 #endif /* HSS_H_ */

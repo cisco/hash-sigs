@@ -21,11 +21,6 @@ static bool generate_random(void *output, size_t length) {
 static bool run_test(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
                      unsigned num_iter, bool at_end) {
 
-    size_t len_private_key = hss_get_private_key_len(d, lm_array, lm_ots_array );
-    if (len_private_key == 0 || len_private_key > HSS_MAX_PRIVATE_KEY_LEN) { 
-        printf( "    Len private key failed\n" );
-        return false;
-    }
     unsigned char private_key[HSS_MAX_PRIVATE_KEY_LEN];
 
     unsigned len_public_key = hss_get_public_key_len(d, lm_array, lm_ots_array );
@@ -55,7 +50,7 @@ static bool run_test(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
         return false;
     }
 
-    unsigned char private_key_2[HSS_MAX_PUBLIC_KEY_LEN];
+    unsigned char private_key_2[HSS_MAX_PRIVATE_KEY_LEN];
     memcpy( private_key_2, private_key, HSS_MAX_PRIVATE_KEY_LEN );
 
     /* Load the private key into memory (twice!) */
@@ -116,7 +111,6 @@ static bool run_test(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
             free(sig_1); free(sig_2);
             return false;
         }
-
 
         if (!hss_sign_update( &ctx, "A", 1) ||
             !hss_sign_update( &ctx, "BC", 2)) {

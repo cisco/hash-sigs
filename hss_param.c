@@ -17,8 +17,9 @@ bool hss_compress_param_set( unsigned char *compressed,
                    size_t len_compressed ) {
     int i;
 
+    if (levels > len_compressed) return false;
+
     for (i=0; i<levels; i++) {
-        if (len_compressed == 0) return false;
         param_set_t a = *lm_type++;
         param_set_t b = *lm_ots_type++;
             /* All the parameter sets we support are small */
@@ -45,11 +46,6 @@ bool hss_compress_param_set( unsigned char *compressed,
         len_compressed--;
     }
 
-    while (len_compressed) {
-        *compressed++ = PARM_SET_END;
-        len_compressed--;
-    }
-
     return true;
 }
 
@@ -69,7 +65,7 @@ bool hss_compress_param_set( unsigned char *compressed,
  * On success, this returns true; on failure (can't read the private key, or
  * the private key is invalid), returns false 
  */
-bool hss_get_parameter_set( unsigned *levels,
+bool hss_get_parameter_set( unsigned *p_levels,
                            param_set_t lm_type[ MAX_HSS_LEVELS ],
                            param_set_t lm_ots_type[ MAX_HSS_LEVELS ],
                            bool (*read_private_key)(unsigned char *private_key,
@@ -82,11 +78,17 @@ bool hss_get_parameter_set( unsigned *levels,
     } else {
         error = &temp_error;
     }
-    unsigned char private_key[ PRIVATE_KEY_LEN ];
+    unsigned char private_key[ HSS_MAX_PRIVATE_KEY_LEN ];
     bool success = false;
+    unsigned levels;
 
     if (read_private_key) {
-        if (!read_private_key( private_key, PRIVATE_KEY_LEN, context )) {
+        if (!read_private_key( private_key,
+                   PRIVATE_KEY_FORMAT + PRIVATE_KEY_FORMAT_LEN, context) ||
+            (levels = private_key[PRIVATE_KEY_FORMAT_NUM_LEVEL]) < 1 ||
+            levels > MAX_HSS_LEVELS ||
+             !read_private_key( private_key,
+                     PRIVATE_KEY_LEN(levels), context)) {
             *error = hss_error_private_key_read_failed;
             goto failed;
         }
@@ -95,7 +97,12 @@ bool hss_get_parameter_set( unsigned *levels,
             *error = hss_error_no_private_buffer;
             return false;
         }
-        memcpy( private_key, context, PRIVATE_KEY_LEN );
+        levels = ((unsigned char*)context)[PRIVATE_KEY_FORMAT_NUM_LEVEL];
+        if (levels < 1 || levels > MAX_HSS_LEVELS) {
+             *error = hss_error_bad_private_key;
+             goto failed;
+        }
+        memcpy( private_key, context, PRIVATE_KEY_LEN(levels) );
     }
     if (!hss_check_private_key(private_key)) {
          *error = hss_error_bad_private_key;
@@ -105,9 +112,8 @@ bool hss_get_parameter_set( unsigned *levels,
     /* Scan through the private key to recover the parameter sets */
     unsigned total_height = 0;
     unsigned level;
-    for (level=0; level < MAX_HSS_LEVELS; level++) {
-        unsigned char c = private_key[PRIVATE_KEY_PARAM_SET + level];
-        if (c == PARM_SET_END) break;
+    for (level=0; level < levels; level++) {
+        unsigned char c = private_key[PRIVATE_KEY_PARAM_SET(levels) + level];
             /* Decode this level's parameter set */
         param_set_t lm = (c >> 4);
         param_set_t ots = (c & 0x0f);
@@ -137,19 +143,7 @@ bool hss_get_parameter_set( unsigned *levels,
         lm_ots_type[level] = ots;
     }
 
-    if (level < MIN_HSS_LEVELS || level > MAX_HSS_LEVELS) {
-        *error = hss_error_bad_private_key;
-        goto failed;
-    }
-
-    *levels = level;
-
-    /* Make sure that the rest of the private key has PARM_SET_END */
-    unsigned i;
-    for (i = level+1; i<MAX_HSS_LEVELS; i++) {
-        unsigned char c = private_key[PRIVATE_KEY_PARAM_SET + i];
-        if (c != PARM_SET_END) goto failed;
-    }
+    *p_levels = levels;
 
     /* One final check; make sure that the sequence number listed in the */
     /* private key is in range */

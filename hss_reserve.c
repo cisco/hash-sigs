@@ -49,15 +49,15 @@ bool hss_check_end_key(struct hss_working_key *w, sequence_t cur_count,
                 /* private key until after we've generated the signature */
                 /* We can trash the copy in secure storage, though */
         if (w->update_private_key) {
-            unsigned char private_key[PRIVATE_KEY_LEN];
-            memset( private_key, PARM_SET_END, PRIVATE_KEY_LEN );
-            if (!w->update_private_key(private_key, PRIVATE_KEY_LEN,
+            unsigned char private_key[PRIVATE_KEY_LEN(MAX_HSS_LEVELS)];
+            memset( private_key, 0xff, PRIVATE_KEY_LEN(w->levels) );
+            if (!w->update_private_key(private_key, PRIVATE_KEY_LEN(w->levels),
                                        w->context)) {
                 info->error_code = hss_error_private_key_write_failed;
                 return false;
             }
         } else {
-            memset( w->context, PARM_SET_END, PRIVATE_KEY_LEN );
+            memset( w->context, 0xff, PRIVATE_KEY_LEN(w->levels) );
         }
     }
     return true;
@@ -238,7 +238,8 @@ bool hss_reserve_signature(
      * reason we shouldn't support it
      */
     if (!w->update_private_key) {
-        if (0 != memcmp( w->context, w->private_key, PRIVATE_KEY_LEN)) {
+        if (0 != memcmp( w->context, w->private_key,
+                                             PRIVATE_KEY_LEN(w->levels))) {
             info->error_code = hss_error_key_mismatch;
             return false;   /* Private key mismatch */
         }

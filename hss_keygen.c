@@ -108,20 +108,20 @@ bool hss_generate_private_key(
         return false;
     }
 
-    unsigned char private_key[ PRIVATE_KEY_LEN ];
+    unsigned char private_key[ PRIVATE_KEY_LEN(MAX_HSS_LEVELS) ];
 
         /* First step: format the private key */
-    hss_set_private_key_format( private_key );
+    hss_set_private_key_format( private_key, levels );
     put_bigendian( private_key + PRIVATE_KEY_INDEX, 0,
                    PRIVATE_KEY_INDEX_LEN );
 #if FAULT_CACHE_SIG
         /* Mark all signatures as "not computed yet" */
     memset( private_key + PRIVATE_KEY_SIG_CACHE, 0,
-            PRIVATE_KEY_SIG_CACHE_LEN );
+            PRIVATE_KEY_SIG_CACHE_LEN(levels) );
 #endif
-    if (!hss_compress_param_set( private_key + PRIVATE_KEY_PARAM_SET,
+    if (!hss_compress_param_set( private_key + PRIVATE_KEY_PARAM_SET(levels),
                    levels, lm_type, lm_ots_type,
-                   PRIVATE_KEY_PARAM_SET_LEN )) {
+                   PRIVATE_KEY_PARAM_SET_LEN(levels) )) {
         info->error_code = hss_error_bad_param_set;
         return false;
     }
@@ -131,11 +131,11 @@ bool hss_generate_private_key(
         info->error_code = hss_error_bad_param_set;
         return false;
     }
-    put_bigendian( private_key + PRIVATE_KEY_MAX, max_seqno,
+    put_bigendian( private_key + PRIVATE_KEY_MAX(levels), max_seqno,
                    PRIVATE_KEY_MAX_LEN );
 
         /* Pick the random seed */
-    if (!(*generate_random)( private_key + PRIVATE_KEY_SEED,
+    if (!(*generate_random)( private_key + PRIVATE_KEY_SEED(levels),
                    PRIVATE_KEY_SEED_LEN )) {
         info->error_code = hss_error_bad_randomness;
         return false;
@@ -149,7 +149,7 @@ bool hss_generate_private_key(
         return false;
     }
     enum hss_error_code e = hss_write_private_key_no_w( private_key,
-                        PRIVATE_KEY_LEN, 0, update_private_key, context );
+                  PRIVATE_KEY_LEN(levels), 0, update_private_key, context );
     if (e != hss_error_none) {
         info->error_code = e;
         hss_zeroize( private_key, sizeof private_key );
@@ -170,7 +170,8 @@ bool hss_generate_private_key(
 
     unsigned char I[I_LEN];
     unsigned char seed[SEED_LEN];
-    hss_generate_root_seed_I_value( seed, I, private_key+PRIVATE_KEY_SEED );
+    hss_generate_root_seed_I_value( seed, I,
+                                    private_key+PRIVATE_KEY_SEED(levels) );
 
     /* Now, it's time to generate the public key, which means we need to */
     /* compute the entire top level Merkle tree */
@@ -273,9 +274,10 @@ bool hss_generate_private_key(
         info->error_code = got_error;
         hss_zeroize( private_key, sizeof private_key );
         if (update_private_key) {
-            (void)(*update_private_key)(private_key, PRIVATE_KEY_LEN, context);
+            (void)(*update_private_key)(private_key, PRIVATE_KEY_LEN(levels),
+                                                                  context);
         } else {
-            hss_zeroize( context, PRIVATE_KEY_LEN );
+            hss_zeroize( context, PRIVATE_KEY_LEN(levels) );
         }
         return false;
     }
@@ -334,7 +336,7 @@ bool hss_generate_private_key(
 
     /* Complete the computation of the aux data */
     hss_finalize_aux_data( expanded_aux_data, size_hash, h,
-                           private_key+PRIVATE_KEY_SEED );
+                           private_key+PRIVATE_KEY_SEED(levels) );
 
     /* We have the root value; now format the public key */
     put_bigendian( public_key, levels, 4 );
@@ -362,5 +364,5 @@ size_t hss_get_private_key_len(unsigned levels,
                    const param_set_t *lm_ots_type) {
        /* A private key is a 'public object'?  Yes, in the sense that we */
        /* export it outside this module */
-    return PRIVATE_KEY_LEN;
+    return PRIVATE_KEY_LEN(levels);
 }

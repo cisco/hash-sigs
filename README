@@ -14,3 +14,4 @@ Changes:
   to the public key computations; this is at some cost to both time
   and memory
 - Added a fault regression test, which tests out the above protection
+- Also added a test that looks for memory leaks
