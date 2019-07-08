@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include "common_defs.h"
 #include "hss.h"
+#include "config.h"
 
 /*
  * This is the central internal include file for the functions that make up
@@ -27,7 +28,11 @@
 #define PRIVATE_KEY_PARAM_SET (PRIVATE_KEY_INDEX + PRIVATE_KEY_INDEX_LEN)
 #define PRIVATE_KEY_PARAM_SET_LEN (PARAM_SET_COMPRESS_LEN * MAX_HSS_LEVELS)
 #define PRIVATE_KEY_SEED (PRIVATE_KEY_PARAM_SET + PRIVATE_KEY_PARAM_SET_LEN)
+#if SECRET_METHOD == 2
+#define PRIVATE_KEY_SEED_LEN (SEED_LEN + I_LEN)
+#else
 #define PRIVATE_KEY_SEED_LEN SEED_LEN
+#endif
 #define PRIVATE_KEY_LEN (PRIVATE_KEY_SEED + PRIVATE_KEY_SEED_LEN) /* That's */
                                                                 /* 48 bytes */
 
@@ -170,13 +175,14 @@ bool hss_compress_param_set( unsigned char *compressed,
 /* Internal function to generate the root seed, I value (based on the */
 /* private seed).  We do this (rather than selecting them  at random) so */
 /* that we don't need to store them in our private key; we can recompute */
-void hss_generate_root_seed_I_value(unsigned char *seed, unsigned char *I,
-                                     const unsigned char *master_seed);
+bool hss_generate_root_seed_I_value(unsigned char *seed, unsigned char *I,
+                   const unsigned char *master_seed,
+                   param_set_t parent_lm, param_set_t parent_ots );
 
 /* Internal function to generate the seed, I value for a child Merkle tree */
 /* (based on the seed, I value of the parent.  We do this (rather than */
 /* selecting them at random) so we have consistent values between reboots */
-void hss_generate_child_seed_I_value( unsigned char *seed, unsigned char *I,
+bool hss_generate_child_seed_I_value( unsigned char *seed, unsigned char *I,
                    const unsigned char *parent_seed,
                    const unsigned char *parent_I, merkle_index_t index,
                    param_set_t parent_lm, param_set_t parent_ots );

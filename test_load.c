@@ -26,7 +26,7 @@ static bool test_aux( param_set_t lm_setting ) {
     lm[0] = lm_setting;
     lm[1] = LMS_SHA256_N32_H5;
     param_set_t ots[2] = { LMOTS_SHA256_N32_W2, LMOTS_SHA256_N32_W2 };
-    unsigned char priv_key[48];
+    unsigned char priv_key[HSS_MAX_PRIVATE_KEY_LEN];
     unsigned char len_pub_key = hss_get_public_key_len(levels, lm, ots);
     if (!len_pub_key || len_pub_key > HSS_MAX_PUBLIC_KEY_LEN) return false;
     unsigned char pub_key[HSS_MAX_PUBLIC_KEY_LEN];
@@ -91,7 +91,7 @@ static bool test_aux( param_set_t lm_setting ) {
 
 #define NUM_PARM_SETS 4
 
-static bool load_key( int *index, unsigned char priv_key[][48], 
+static bool load_key( int *index, unsigned char priv_key[][HSS_MAX_PRIVATE_KEY_LEN], 
               struct hss_working_key **w, int levels, ...) {
     int i;
     int n = *index;
@@ -153,7 +153,7 @@ bool test_load(bool fast_flag, bool quiet_flag) {
      * Verify that we can't load a private key with the wrong parameter set
      * into an already allocated working set
      */
-    unsigned char priv_key[NUM_PARM_SETS][48];
+    unsigned char priv_key[NUM_PARM_SETS][HSS_MAX_PRIVATE_KEY_LEN];
     struct hss_working_key *w[NUM_PARM_SETS] = { 0 };
 
     int index = 0;

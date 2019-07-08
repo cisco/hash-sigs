@@ -164,10 +164,15 @@ bool hss_sign_finalize(
             hss_zeroize( seed_buff, sizeof seed_buff );
             return 0;
         }
-        hss_generate_child_seed_I_value( seed_buff[i&1], I_buff[i&1],
+        if (!hss_generate_child_seed_I_value( seed_buff[i&1], I_buff[i&1],
                                          seed, I, q,
                                          working_key->tree[i]->lm_type,
-                                         working_key->tree[i]->lm_ots_type );
+                                         working_key->tree[i]->lm_ots_type )) {
+            hss_zeroize( seed_buff, sizeof seed_buff );
+            info->error_code = hss_error_internal;
+            return false;
+        }
+         
         seed = seed_buff[i&1];
         I = I_buff[i&1];
 
