@@ -44,8 +44,8 @@ static bool read_private_key(unsigned char *private_key,
 
 static bool update_private_key(unsigned char *private_key,
             size_t len_private_key, void *context) {
-    if (len_private_key > max_len_private_key ||
-        len_private_key < 16) return false;
+
+    if (len_private_key > HSS_MAX_PRIVATE_KEY_LEN || len_private_key < 16) return false;
 
     memcpy( priv_key, private_key, len_private_key );
 

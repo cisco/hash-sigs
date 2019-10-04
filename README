@@ -1,5 +1,5 @@
 This code attempts to be a usable implementation of the LMS Hash Based
-Signature Scheme from draft-mcgrew-hash-sigs-15
+Signature Scheme from RFC 8554.
 
 This specific branch attempts to implement optional fault tolerance;
 that is, no secret keying data is leaked on a miscompute.
@@ -15,3 +15,4 @@ Changes:
   and memory
 - Added a fault regression test, which tests out the above protection
 - Also added a test that looks for memory leaks
+

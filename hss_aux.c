@@ -222,7 +222,7 @@ static void compute_seed_derive( unsigned char *result, unsigned hash,
     memset( prefix, 0, DAUX_D );
     SET_D( prefix + DAUX_D, D_DAUX );
     hss_update_hash_context( hash, ctx, prefix, sizeof prefix );
-    hss_update_hash_context( hash, ctx, seed, PRIVATE_KEY_SEED_LEN );
+    hss_update_hash_context( hash, ctx, seed, SEED_LEN );
     hss_finalize_hash_context( hash, ctx, result );
 
     hss_zeroize( &ctx, sizeof ctx );

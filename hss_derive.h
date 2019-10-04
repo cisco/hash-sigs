@@ -15,6 +15,10 @@ struct seed_derive {
     const unsigned char *master_seed;
     merkle_index_t q;
     unsigned j;
+#if SECRET_METHOD == 2
+    unsigned hash;  /* Hash function to use */
+    unsigned m;     /* Length of hash function */
+#endif
 
 #if SECRET_METHOD == 1
     unsigned q_levels, j_levels;
@@ -48,9 +52,11 @@ void hss_seed_derive_set_q( struct seed_derive *derive, merkle_index_t q );
 void hss_seed_derive_set_j( struct seed_derive *derive, unsigned j );
 
 #define NUM_ARTIFICIAL_SEEDS    3  /* 3 seeds are listed below */
-    /* These are the j values used when we're deriving the I/seed values */
+    /* This is the j value used when we're deriving the seed value */
     /* for child Merkle trees */
 #define SEED_CHILD_SEED         (~1)
+    /* This is the j value used when we're deriving the I value */
+    /* used; either in the context of the parent tree, or of this tree */
 #define SEED_CHILD_I            (SEED_CHILD_SEED + 1)
     /* This is the j value used when we're asking for the randomizer C */
     /* for signing a message */

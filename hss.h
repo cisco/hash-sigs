@@ -304,7 +304,7 @@ size_t hss_get_private_key_len(unsigned levels,
  * We guarrantee that the private key length will never exceed this
  * This is a conservative value, which is true for any config.h setting
  */
-#define HSS_MAX_PRIVATE_KEY_LEN (4 + 8 + 8 + 7*32 + 8 + 8 + SEED_LEN)
+#define HSS_MAX_PRIVATE_KEY_LEN (4 + 8 + 8 + 7*32 + 8 + 8 + SEED_LEN + 16)
 
 /*
  * This include file has the functions that contains the lengths of the other

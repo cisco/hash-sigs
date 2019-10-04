@@ -75,6 +75,7 @@
  *      This is slightly faster
  * 1 -> We use a side channel resistant process, never using any single secret
  *      seed in more than a defined number of distinct hashes
+ * 2 -> We generate seeds and secrets in a way which is compatible with ACVP
  */
 #define SECRET_METHOD 0
 
