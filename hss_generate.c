@@ -389,8 +389,12 @@ bool hss_generate_working_key(
             /* Initialize the I, I_next elements */
             if (i == 0) {
                 /* The root seed, I value is derived from the secret key */
-                hss_generate_root_seed_I_value( tree->seed, tree->I,
-                                  private_key+PRIVATE_KEY_SEED(w->levels) );
+                if (!hss_generate_root_seed_I_value( tree->seed, tree->I,
+                                  private_key+PRIVATE_KEY_SEED(w->levels),
+                                  tree->lm_type, tree->lm_ots_type)) {
+                    info->error_code = hss_error_internal;
+                    goto failed;
+                }
                 /* We don't use the I_next value */
 #if FAULT_RECOMPUTE
                 /*

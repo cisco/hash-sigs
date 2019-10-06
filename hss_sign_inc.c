@@ -173,7 +173,7 @@ bool hss_sign_finalize(
                                          seed, I, q,
                                          working_key->tree[0][i]->lm_type,
                                          working_key->tree[0][i]->lm_ots_type,
-                                         i ) {
+                                         i )) {
             hss_zeroize( seed_buff, sizeof seed_buff );
             info->error_code = hss_error_internal;
             return false;

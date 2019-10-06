@@ -457,8 +457,8 @@ static int sign(const char *keyname, char **files) {
     printf( "Loading private key\n" );
     fflush(stdout);
     struct hss_working_key *w = hss_load_private_key(
-             read_private_key, update_private_key, private_key_filename, /* How to load the */
-                                         /* private key */
+             read_private_key, update_private_key, /* How to load and */
+                 private_key_filename,   /* update the private key */
              0,                          /* Use minimal memory */
              aux_data, len_aux_data,     /* The auxiliary data */
              0);                         /* Use the defaults for extra info */
@@ -710,8 +710,8 @@ static int advance(const char *keyname, const char *text_advance) {
     printf( "Loading private key\n" );
     fflush(stdout);
     struct hss_working_key *w = hss_load_private_key(
-             read_private_key, private_key_filename, /* How to load the */
-                                         /* private key */
+             read_private_key, update_private_key, /* How to load and */
+                 private_key_filename,   /* update the private key */
              0,                          /* Use minimal memory */
              aux_data, len_aux_data,     /* The auxiliary data */
              0);                         /* Use the defaults for extra info */
@@ -727,9 +727,7 @@ static int advance(const char *keyname, const char *text_advance) {
         /* Now that we've loaded the private key, we fast-forward it */
         /* We do this by reserving N signatures (which updates the private */
         /* key to reflect that we've generated those signatures) */
-    bool success = hss_reserve_signature( w,
-             update_private_key, private_key_filename,
-             advance, 0 );
+    bool success = hss_reserve_signature( w, advance, 0 );
     if (!success) {
         printf( "Error advancing\n" );
     }
