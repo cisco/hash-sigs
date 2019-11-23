@@ -15,6 +15,7 @@
 #include "lm_ots.h"
 #include "lm_ots_common.h"
 #include "hss_derive.h"
+#include "hss_fault.h"
 
 /*
  * This adds one leaf to the building and next subtree.
@@ -221,14 +222,78 @@ static int generate_merkle_signature(
         index >>= height;
     }
 
-    /* Mark that we've generated a signature */
-    tree->current_index = current_index + 1;
-
     return 1;
 }
 
+#if FAULT_RECOMPUTE
 /*
- * This signed the root of tree with the parent; it places both the signature
+ * Verify that the Merkle signature is what we are supposed to generate
+ * Hmmmm, do we really need to double-check anythhing other than the OTS
+ * signature?
+ */
+static bool doublecheck_merkle_signature(
+                     const unsigned char *signature, unsigned signature_len,
+                     struct merkle_level *tree,
+                     const struct hss_working_key *w,
+                     const void *message, size_t message_len) {
+    /* First off, check the index value */
+    if (signature_len < 4) return false;
+    merkle_index_t current_index = tree->current_index;
+    if (current_index != get_bigendian( signature, 4 )) return false;
+    signature += 4; signature_len -= 4;
+
+    /* Verify the OTS signature */
+    size_t ots_sig_size = lm_ots_get_signature_len( tree->lm_ots_type );
+    if (ots_sig_size == 0 || ots_sig_size > signature_len) return 0;
+    {
+        struct seed_derive derive;
+        if (!hss_seed_derive_init( &derive,
+                            tree->lm_type, tree->lm_ots_type,
+                            tree->I, tree->seed )) return false;
+        hss_seed_derive_set_q(&derive, current_index);
+        bool success = lm_ots_doublecheck_signature( tree->lm_ots_type,
+                                    tree->I,
+                                    current_index, &derive,
+                                    message, message_len,
+                                    signature, ots_sig_size);
+        hss_seed_derive_done(&derive);
+        if (!success) return false;
+    }
+    signature += ots_sig_size; signature_len -= ots_sig_size;
+
+    /* Verify the LM parameter set */
+    if (signature_len < 4) return 0;
+    if (tree->lm_type != get_bigendian( signature, 4 )) return false;
+    signature += 4; signature_len -= 4;
+
+    /* Now, doublecheck the authentication path */
+    int i, j;
+    merkle_index_t index = current_index;
+    unsigned n = tree->hash_size;
+    for (i = tree->sublevels-1; i>=0; i--) {
+        int height = (i == 0) ? tree->top_subtree_size : tree->subtree_size;
+        struct subtree *subtree = tree->subtree[i][ACTIVE_TREE];
+        merkle_index_t subtree_index = (index &
+                                            (((merkle_index_t)1 << height) - 1)) +
+                                       ((merkle_index_t)1 << height);
+        for (j = height-1; j>=0; j--) {
+            if (signature_len < n) return 0;
+            if (0 != memcmp( signature,
+                         subtree->nodes + n * ((subtree_index^1) - 1), n )) {
+                return false;
+            }
+            signature += n; signature_len -= n;
+            subtree_index >>= 1;
+        }
+        index >>= height;
+    }
+
+    return true;
+}
+#endif
+
+/*
+ * This signs the root of tree with the parent; it places both the signature
  * and the public key into signed_key
  */
 bool hss_create_signed_public_key(unsigned char *signed_key,
@@ -262,6 +327,57 @@ bool hss_create_signed_public_key(unsigned char *signed_key,
 
     return true;
 }
+
+/* This marks the signature as having been generated */
+void hss_step_tree(struct merkle_level *tree) {
+    tree->current_index += 1;
+}
+
+#if FAULT_RECOMPUTE
+/*
+ * This checks the siganture of the root of the tree against what was
+ * previously signed, making sure that we signed what we expect.
+ * Note that we don't actually check the signature; the goal is to make sure
+ * that we don't accidentally sign two different messages with the same index
+ */
+bool hss_doublecheck_signed_public_key(const unsigned char *signed_key,
+                                    size_t len_signature,
+                                    struct merkle_level *tree,
+                                    struct merkle_level *parent,
+                                    struct hss_working_key *w) {
+    /* Where we place the public key */
+    const unsigned char *public_key = signed_key + len_signature;
+
+    /* Place the public key there */
+    if (tree->lm_type != get_bigendian( public_key + 0, 4 ) ||
+        tree->lm_ots_type != get_bigendian( public_key + 4, 4 ) ||
+        0 != memcmp( public_key + 8, tree->I, I_LEN )) {
+        return false;
+    }
+ 
+    unsigned hash_size = tree->hash_size;
+        /* This is where the root hash is */
+    if (0 != memcmp( public_key + 8 + I_LEN,
+                   tree->subtree[0][ACTIVE_TREE]->nodes,
+                   hash_size )) {
+        return false;
+    }
+
+    unsigned len_public_key = 8 + I_LEN + hash_size;
+
+        /* Now, check the signature */
+    if (!doublecheck_merkle_signature( signed_key, len_signature,
+                         parent, w, public_key, len_public_key)) {
+        return false;
+    }
+
+    parent->update_count = UPDATE_NEXT;  /* The parent has doublechecked a */
+                              /* signature; it's now eligible for another */
+                              /* round of updates */
+
+    return true;
+}
+#endif
 
 struct gen_sig_detail {
     unsigned char *signature;
@@ -301,10 +417,20 @@ static void do_gen_sig( const void *detail, struct thread_collection *col) {
     const unsigned char *message = d->message;
     size_t message_len = d->message_len;
 
+    hss_set_level(levels - 1);
     if (!generate_merkle_signature(signature, signature_len,
-              w->tree[ levels-1 ], w, message, message_len)) {
+              w->tree[0][ levels-1 ], w, message, message_len)) {
         goto failed;
     }
+    hss_step_tree(w->tree[0][ levels-1 ]);
+#if FAULT_RECOMPUTE
+    if (levels > 1) {
+        hss_step_tree(w->tree[1][ levels-1 ]);
+    }
+#endif
+
+    /* Note: this is the bottommost signature; it doesn't need to be */
+    /* double-checked */
 
     /* Success! */
     return;
@@ -328,6 +454,7 @@ static void do_step_next( const void *detail, struct thread_collection *col) {
     struct hss_working_key *w = d->w;
     struct merkle_level *tree = d->tree;
 
+    hss_set_level( w->levels - 1 );
     if (!hss_step_next_tree( tree, w, col )) {
         /* Report failure */
         hss_thread_before_write(col);
@@ -339,6 +466,7 @@ static void do_step_next( const void *detail, struct thread_collection *col) {
 struct step_building_detail {
     struct merkle_level *tree;
     struct subtree *subtree;
+    int tree_level;
     enum hss_error_code *got_error;
 };
 /* This steps the building tree */
@@ -348,6 +476,7 @@ static void do_step_building( const void *detail,
     const struct step_building_detail *d = detail;
     struct merkle_level *tree = d->tree;
     struct subtree *subtree = d->subtree;
+    hss_set_level( d->tree_level );
 
     switch (subtree_add_next_node( subtree, tree, 0, col )) {
     case subtree_got_error: default:
@@ -366,6 +495,7 @@ static void do_step_building( const void *detail,
 struct update_parent_detail {
     struct hss_working_key *w;
     enum hss_error_code *got_error;
+    int redux;
 };
 /*
  * This gives an update to the parent (non-bottom Merkle trees)
@@ -375,10 +505,14 @@ static void do_update_parent( const void *detail,
     const struct update_parent_detail *d = detail;
     struct hss_working_key *w = d->w;
     unsigned levels = w->levels;
+    int redux = d->redux;
     unsigned current_level = levels - 2;  /* We start with the first */
                                           /* non-bottom level */
     for (;;) {
-        struct merkle_level *tree = w->tree[current_level];
+        if (redux == 1 && current_level == 0) return;
+        hss_set_level(current_level);
+
+        struct merkle_level *tree = w->tree[redux][current_level];
         switch (tree->update_count) {
         case UPDATE_DONE: return;   /* No more updates needed */
         case UPDATE_NEXT:           /* Our job is to update the next tree */
@@ -442,9 +576,6 @@ failed:
  */
 bool hss_generate_signature(
     struct hss_working_key *w,
-    bool (*update_private_key)(unsigned char *private_key,
-            size_t len_private_key, void *context),
-    void *context,
     const void *message, size_t message_len,
     unsigned char *signature, size_t signature_buf_len,
     struct hss_extra_info *info) {
@@ -466,8 +597,9 @@ bool hss_generate_signature(
 
     /* If we're given a raw private key, make sure it's the one we're */
     /* thinking of */
-    if (!update_private_key) {
-        if (0 != memcmp( context, w->private_key, PRIVATE_KEY_LEN)) {
+    if (!w->update_private_key) {
+        if (0 != memcmp( w->context, w->private_key,
+                                            PRIVATE_KEY_LEN(w->levels))) {
             info->error_code = hss_error_key_mismatch;
             return false;   /* Private key mismatch */
         }
@@ -486,18 +618,25 @@ bool hss_generate_signature(
      */
     sequence_t current_count = 0;
     for (i=0; i < levels; i++) {
-        struct merkle_level *tree = w->tree[i];
+        struct merkle_level *tree = w->tree[0][i];
         current_count <<= tree->level;
             /* We subtract 1 because the nonbottom trees are already advanced */
         current_count += (sequence_t)tree->current_index - 1;
+#if FAULT_RECOMPUTE
+        struct merkle_level *tree_redux = w->tree[1][i];
+        if (tree->level != tree_redux->level ||
+            tree->current_index != tree_redux->current_index) {
+            /* We're inconsistent */
+            info->error_code = hss_error_internal;
+            goto failed;
+         }
+#endif
     }
     current_count += 1;   /* Bottom most tree isn't already advanced */
 
-    /* Ok, try to advance the private key */
-    if (!hss_advance_count(w, current_count,
-                               update_private_key, context, info,
-                               &trash_private_key)) {
-        /* hss_advance_count fills in the error reason */
+    /* Ok, check if we hit the end of the private key */
+    if (!hss_check_end_key(w, current_count, info, &trash_private_key)) {
+        /* hss_check_end_key fills in the error reason */
         goto failed;
     }
 
@@ -520,21 +659,33 @@ bool hss_generate_signature(
         hss_thread_issue_work(col, do_gen_sig, &gen_detail, sizeof gen_detail);
     }
 
+    /* If this is the last signature, we needn't bother to update the */
+    /* various Merkle trees (as we'll just throw them away) */
+    /* In addition, we sometimes get an error trying to derive a */
+    /* seed past the end */
+    if (trash_private_key) goto dont_bother_updating_trees;
+
     /* Update the bottom level next tree */
     if (levels > 1) {
-        struct step_next_detail step_detail;
-        step_detail.w = w;
-        step_detail.tree = w->tree[levels-1];
-        step_detail.got_error = &got_error;
+        int redux;
+        for (redux = 0; redux <= FAULT_RECOMPUTE; redux++) {
+            struct step_next_detail step_detail;
+            step_detail.w = w;
+            step_detail.tree = w->tree[redux][levels-1];
+            step_detail.got_error = &got_error;
 
-        hss_thread_issue_work(col, do_step_next, &step_detail, sizeof step_detail);
+            hss_thread_issue_work(col, do_step_next, &step_detail,
+                                  sizeof step_detail);
+        }
     }
-
     /* Issue orders to step each of the building subtrees in the bottom tree */
-    int skipped_a_level = 0;   /* Set if the below issued didn't issue an */
-                               /* order for at least one level */
-    {
-        struct merkle_level *tree = w->tree[levels-1];
+    int redux;
+    for (redux = 0; redux <= FAULT_RECOMPUTE; redux++) {
+        if (redux == 1 && levels == 1) continue;
+
+        int skipped_a_level = 0;   /* Set if the below issued didn't issue */
+                                   /* an order for at least one level */
+        struct merkle_level *tree = w->tree[redux][levels-1];
         merkle_index_t updates_before_end = tree->max_index - tree->current_index + 1;
         int h_subtree = tree->subtree_size;
         int i;
@@ -551,26 +702,31 @@ bool hss_generate_signature(
             step_detail.tree = tree;
             step_detail.subtree = subtree;
             step_detail.got_error = &got_error;
+            step_detail.tree_level = levels-1;
 
             hss_thread_issue_work(col, do_step_building, &step_detail, sizeof step_detail);
 
         }
             /* If there's only one sublevel, act as if we always skipped a sublevel */
         if (tree->sublevels == 1) skipped_a_level = 1;
-    }
 
-    /*
-     * And, if we're allowed to give the parent a chance to update, and
-     * there's a parent with some updating that needs to be done, schedule
-     * that to be done
-     */
-    if (skipped_a_level &&
-        levels > 1 && w->tree[levels-2]->update_count != UPDATE_DONE) {
-        struct update_parent_detail detail;
-        detail.w = w;
-        detail.got_error = &got_error;
-        hss_thread_issue_work(col, do_update_parent, &detail, sizeof detail);
+        /*
+         * And, if we're allowed to give the parent a chance to update, and
+         * there's a parent with some updating that needs to be done, schedule
+         * that to be done
+         */
+        if (skipped_a_level &&
+            levels > 1 && w->tree[0][levels-2]->update_count != UPDATE_DONE) {
+            if (redux && levels <= 2) continue; /* The previous iteration */
+                                       /* already took care of the parent */
+            struct update_parent_detail detail;
+            detail.w = w;
+            detail.got_error = &got_error;
+            detail.redux = redux;
+            hss_thread_issue_work(col, do_update_parent, &detail, sizeof detail);
+        }
     }
+dont_bother_updating_trees:
 
     /* Wait for all of them to finish */ 
     hss_thread_done(col);
@@ -588,124 +744,156 @@ bool hss_generate_signature(
      * Now, we scan to see if we exhausted a Merkle tree, and need to update it
      * At the same time, we check to see if we need to advance the subtrees
      */
-    sequence_t cur_count = current_count;
-    unsigned merkle_levels_below = 0;
-    int switch_merkle = w->levels;
-    struct merkle_level *tree;
-    for (i = w->levels-1; i>=0; i--, merkle_levels_below += tree->level) {
-        tree = w->tree[i];
-
-        if (0 == (cur_count & (((sequence_t)1 << (merkle_levels_below + tree->level))-1))) {
-            /* We exhausted this tree */
-            if (i == 0) {
-                /* We've run out of signatures; we've already caught this */
-                /* above; just make *sure* we've marked the key as */
-                /* unusable, and give up */
-                w->status = hss_error_private_key_expired;
-                break;
+    if (trash_private_key) goto dont_update_these_either;
+    int num_sig_updated = 0;
+    for (redux = 0; redux <= FAULT_RECOMPUTE; redux++) {
+        struct merkle_level *tree;
+        unsigned merkle_levels_below = 0;
+        int switch_merkle = w->levels;
+        for (i = w->levels-1; i>=0; i--, merkle_levels_below += tree->level) {
+            if (redux == 1 && i == 0) break;
+            tree = w->tree[redux][i];
+    
+            if (0 == (current_count & (((sequence_t)1 << (merkle_levels_below + tree->level))-1))) {
+                /* We exhausted this tree */
+                if (i == 0) {
+                    /* We've run out of signatures; we've already caught */
+                    /* this  above; just make *sure* we've marked the key as */
+                    /* unusable, and give up */
+                    w->status = hss_error_private_key_expired;
+                    break;
+                }
+    
+                /* Remember we'll need to switch to the NEXT_TREE */
+                switch_merkle = i;
+                continue;
             }
-
-            /* Remember we'll need to switch to the NEXT_TREE */
-            switch_merkle = i;
-            continue;
-        }
-
-        /* Check if we need to advance any of the subtrees */
-        unsigned subtree_levels_below = 0; 
-        int j;
-        for (j = tree->sublevels-1; j>0; j--) {
-            subtree_levels_below += tree->subtree_size;
-            if (0 != (cur_count & (((sequence_t)1 << (merkle_levels_below + subtree_levels_below))-1))) {
-                /* We're in the middle of this subtree */
-                goto done_advancing;
+    
+            /* Check if we need to advance any of the subtrees */
+            unsigned subtree_levels_below = 0; 
+            int j;
+            for (j = tree->sublevels-1; j>0; j--) {
+                subtree_levels_below += tree->subtree_size;
+                if (0 != (current_count & (((sequence_t)1 << (merkle_levels_below + subtree_levels_below))-1))) {
+                    /* We're in the middle of this subtree */
+                    goto done_advancing;
+                }
+    
+                /* Switch to the building subtree */
+                struct subtree *next = tree->subtree[j][BUILDING_TREE];
+                struct subtree *prev = tree->subtree[j][ACTIVE_TREE];
+                unsigned char *stack = next->stack;  /* Stack stays with */
+                                                     /* building tree */
+                tree->subtree[j][ACTIVE_TREE] = next;
+                    /* We need to reset the parameters on the new building */
+                    /* subtree */
+                prev->current_index = 0;
+                prev->left_leaf += (merkle_index_t)2 << subtree_levels_below;
+                tree->subtree[j][BUILDING_TREE] = prev;
+                next->stack = NULL;
+                prev->stack = stack;
             }
-
-            /* Switch to the building subtree */
-            struct subtree *next = tree->subtree[j][BUILDING_TREE];
-            struct subtree *prev = tree->subtree[j][ACTIVE_TREE];
-            unsigned char *stack = next->stack;  /* Stack stays with */
-                                                 /* building tree */
-            tree->subtree[j][ACTIVE_TREE] = next;
-                /* We need to reset the parameters on the new building subtree */
-            prev->current_index = 0;
-            prev->left_leaf += (merkle_index_t)2 << subtree_levels_below;
-            tree->subtree[j][BUILDING_TREE] = prev;
-            next->stack = NULL;
-            prev->stack = stack;
         }
-    }
 done_advancing:
-    /* Check if we used up any Merkle trees; if we have, switch to the */
-    /* NEXT_TREE (which we've built in our spare time) */
-    for (i = switch_merkle; i < w->levels; i++) {
-        struct merkle_level *tree = w->tree[i];
-        struct merkle_level *parent = w->tree[i-1];
-        int j;
 
-        /* Rearrange the subtrees */
-        for (j=0; j<tree->sublevels; j++) {
-            /* Make the NEXT_TREE active; replace it with the current active */
-            struct subtree *active = tree->subtree[j][NEXT_TREE];
-            struct subtree *next = tree->subtree[j][ACTIVE_TREE];
-            unsigned char *stack = active->stack;  /* Stack stays with */
-                                                 /* next tree */
-
-            active->left_leaf = 0;
-            next->current_index = 0;
-            next->left_leaf = 0;
-            tree->subtree[j][ACTIVE_TREE] = active;
-            tree->subtree[j][NEXT_TREE] = next;
-            active->stack = NULL;
-            next->stack = stack;
-            if (j > 0) {
-                /* Also reset the building tree */
-                struct subtree *building = tree->subtree[j][BUILDING_TREE];
-                building->current_index = 0;
-                merkle_index_t size_subtree = (merkle_index_t)1 <<
-                                (tree->subtree_size + building->levels_below);
-                building->left_leaf = size_subtree;
+        /* Check if we used up any Merkle trees; if we have, switch to the */
+        /* NEXT_TREE (which we've built in our spare time) */
+        for (i = switch_merkle; i < w->levels; i++) {
+            struct merkle_level *tree = w->tree[redux][i];
+            struct merkle_level *parent = w->tree[redux][i-1];
+            int j;
+    
+            /* Rearrange the subtrees */
+            for (j=0; j<tree->sublevels; j++) {
+                /* Make the NEXT_TREE active; replace it with the current active */
+                struct subtree *active = tree->subtree[j][NEXT_TREE];
+                struct subtree *next = tree->subtree[j][ACTIVE_TREE];
+                unsigned char *stack = active->stack;  /* Stack stays with */
+                                                     /* next tree */
+    
+                active->left_leaf = 0;
+                next->current_index = 0;
+                next->left_leaf = 0;
+                tree->subtree[j][ACTIVE_TREE] = active;
+                tree->subtree[j][NEXT_TREE] = next;
+                active->stack = NULL;
+                next->stack = stack;
+                if (j > 0) {
+                    /* Also reset the building tree */
+                    struct subtree *building = tree->subtree[j][BUILDING_TREE];
+                    building->current_index = 0;
+                    merkle_index_t size_subtree = (merkle_index_t)1 <<
+                                    (tree->subtree_size + building->levels_below);
+                    building->left_leaf = size_subtree;
+                }
             }
-        }
+    
+            /* Copy in the value of seed, I we'll use for the new tree */
+            memcpy( tree->seed, tree->seed_next, SEED_LEN );
+            memcpy( tree->I, tree->I_next, I_LEN );
+    
+            /* Compute the new next I, which is derived from either the parent's */
+            /* I or the parent's I_next value */
+            merkle_index_t index = parent->current_index;
+            hss_set_level(i);
+            if (index == parent->max_index) {
+                hss_generate_child_seed_I_value(tree->seed_next, tree->I_next,
+                                           parent->seed_next, parent->I_next, 0,
+                                           parent->lm_type,
+                                           parent->lm_ots_type, i);
+            } else {
+                hss_generate_child_seed_I_value( tree->seed_next, tree->I_next,
+                                           parent->seed, parent->I, index+1,
+                                           parent->lm_type,
+                                           parent->lm_ots_type, i);
+             }
+    
+             tree->current_index = 0;  /* We're starting this from scratch */
+    
+             /* Generate the signature of the new level */
+             hss_set_level(i-1);  /* Now we'll work with the parent */
+                                    /* tree hashes */
+#if FAULT_RECOMPUTE
+             /* Double check the signature we make last iteration */
+             if (redux) {
+                 if (!hss_doublecheck_signed_public_key( w->signed_pk[i], w->siglen[i-1],
+                                            tree, parent, w )) {
+                    info->error_code = hss_error_fault_detected;
+                    goto failed;
+                 }
+                 hss_step_tree( parent );
+             } else
+#endif
+             {
+                 if (!hss_create_signed_public_key( w->signed_pk[i], w->siglen[i-1],
+                                            tree, parent, w )) {
+                    info->error_code = hss_error_internal;
+                    goto failed;
+                 }
+                 num_sig_updated += 1;
 
-        /* Copy in the value of seed, I we'll use for the new tree */
-        memcpy( tree->seed, tree->seed_next, SEED_LEN );
-        memcpy( tree->I, tree->I_next, I_LEN );
-
-        /* Compute the new next I, which is derived from either the parent's */
-        /* I or the parent's I_next value */
-        merkle_index_t index = parent->current_index;
-        if (index == parent->max_index) {
-            if (!hss_generate_child_seed_I_value(tree->seed_next, tree->I_next,
-                                       parent->seed_next, parent->I_next, 0,
-                                       parent->lm_type,
-                                       parent->lm_ots_type)) {
-                info->error_code = hss_error_internal;
-                goto failed;
+                 /* Mark that we've generated a signature, UNLESS we'll be */
+                 /* using the tree with the redux == 1 iteration.  In that */
+                 /* case, we'll step the tree then */
+                 if (!FAULT_RECOMPUTE || i > 1) {
+                     hss_step_tree( parent );
+                }
             }
-        } else {
-            if (!hss_generate_child_seed_I_value(tree->seed_next, tree->I_next,
-                                       parent->seed, parent->I, index+1,
-                                       parent->lm_type,
-                                       parent->lm_ots_type)) {
-                info->error_code = hss_error_internal;
-                goto failed;
-            }
-         }
-
-         tree->current_index = 0;  /* We're starting this from scratch */
-
-         /* Generate the signature of the new level */
-         if (!hss_create_signed_public_key( w->signed_pk[i], w->siglen[i-1],
-                                        tree, parent, w )) {
-            info->error_code = hss_error_internal;
-            goto failed;
         }
     }
+
+    /* Now, update the NVRAM private key */
+    if (!hss_advance_count(w, current_count, info, num_sig_updated)) {
+        /* hss_check_end fills in the error reason */
+        goto failed;
+    }
+
+dont_update_these_either:
 
     /* And we've set things up for the next signature... */
 
     if (trash_private_key) {
-        memset( w->private_key, PARM_SET_END, PRIVATE_KEY_LEN );
+        memset( w->private_key, 0xff, sizeof w->private_key );
     }
 
     return true;
@@ -713,7 +901,7 @@ done_advancing:
 failed:
 
     if (trash_private_key) {
-        memset( w->private_key, PARM_SET_END, PRIVATE_KEY_LEN );
+        memset( w->private_key, 0xff, sizeof w->private_key );
     }
 
     /* On failure, make sure that we don't return anything that might be */
@@ -733,8 +921,8 @@ size_t hss_get_signature_len_from_working_key(struct hss_working_key *w) {
     param_set_t lm[MAX_HSS_LEVELS], ots[MAX_HSS_LEVELS];
     int i;
     for (i=0; i<levels; i++) {
-        lm[i] = w->tree[i]->lm_type;
-        ots[i] = w->tree[i]->lm_ots_type;
+        lm[i] = w->tree[0][i]->lm_type;
+        ots[i] = w->tree[0][i]->lm_ots_type;
     }
     
     return hss_get_signature_len(levels, lm, ots);

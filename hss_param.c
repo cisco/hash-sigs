@@ -3,6 +3,7 @@
 #include "hss_internal.h"
 #include "endian.h"
 #include "hss_zeroize.h"
+#include "lm_common.h"
 
 /*
  * Convert a parameter set into the compressed version we use within a private
@@ -16,8 +17,9 @@ bool hss_compress_param_set( unsigned char *compressed,
                    size_t len_compressed ) {
     int i;
 
+    if (levels > len_compressed) return false;
+
     for (i=0; i<levels; i++) {
-        if (len_compressed == 0) return false;
         param_set_t a = *lm_type++;
         param_set_t b = *lm_ots_type++;
             /* All the parameter sets we support are small */
@@ -44,11 +46,6 @@ bool hss_compress_param_set( unsigned char *compressed,
         len_compressed--;
     }
 
-    while (len_compressed) {
-        *compressed++ = PARM_SET_END;
-        len_compressed--;
-    }
-
     return true;
 }
 
@@ -68,30 +65,55 @@ bool hss_compress_param_set( unsigned char *compressed,
  * On success, this returns true; on failure (can't read the private key, or
  * the private key is invalid), returns false 
  */
-bool hss_get_parameter_set( unsigned *levels,
+bool hss_get_parameter_set( unsigned *p_levels,
                            param_set_t lm_type[ MAX_HSS_LEVELS ],
                            param_set_t lm_ots_type[ MAX_HSS_LEVELS ],
                            bool (*read_private_key)(unsigned char *private_key,
                                        size_t len_private_key, void *context),
-                           void *context) {
-    unsigned char private_key[ PRIVATE_KEY_LEN ];
+                           void *context,
+                           struct hss_extra_info *info) {
+    enum hss_error_code temp_error, *error;
+    if (info) {
+        error = &info->error_code;
+    } else {
+        error = &temp_error;
+    }
+    unsigned char private_key[ HSS_MAX_PRIVATE_KEY_LEN ];
     bool success = false;
+    unsigned levels;
 
     if (read_private_key) {
-        if (!read_private_key( private_key, PRIVATE_KEY_SEED, context )) {
+        if (!read_private_key( private_key,
+                   PRIVATE_KEY_FORMAT + PRIVATE_KEY_FORMAT_LEN, context) ||
+            (levels = private_key[PRIVATE_KEY_FORMAT_NUM_LEVEL]) < 1 ||
+            levels > MAX_HSS_LEVELS ||
+             !read_private_key( private_key,
+                     PRIVATE_KEY_LEN(levels), context)) {
+            *error = hss_error_private_key_read_failed;
             goto failed;
         }
     } else {
-        if (!context) return false;
-        memcpy( private_key, context, PRIVATE_KEY_SEED );
+        if (!context) {
+            *error = hss_error_no_private_buffer;
+            return false;
+        }
+        levels = ((unsigned char*)context)[PRIVATE_KEY_FORMAT_NUM_LEVEL];
+        if (levels < 1 || levels > MAX_HSS_LEVELS) {
+             *error = hss_error_bad_private_key;
+             goto failed;
+        }
+        memcpy( private_key, context, PRIVATE_KEY_LEN(levels) );
+    }
+    if (!hss_check_private_key(private_key)) {
+         *error = hss_error_bad_private_key;
+         goto failed;
     }
 
     /* Scan through the private key to recover the parameter sets */
     unsigned total_height = 0;
     unsigned level;
-    for (level=0; level < MAX_HSS_LEVELS; level++) {
-        unsigned char c = private_key[PRIVATE_KEY_PARAM_SET + level];
-        if (c == PARM_SET_END) break;
+    for (level=0; level < levels; level++) {
+        unsigned char c = private_key[PRIVATE_KEY_PARAM_SET(levels) + level];
             /* Decode this level's parameter set */
         param_set_t lm = (c >> 4);
         param_set_t ots = (c & 0x0f);
@@ -103,30 +125,25 @@ bool hss_get_parameter_set( unsigned *levels,
         case LMS_SHA256_N32_H15: total_height += 15; break;
         case LMS_SHA256_N32_H20: total_height += 20; break;
         case LMS_SHA256_N32_H25: total_height += 25; break;
-        default: goto failed;
+        default:
+             *error = hss_error_bad_private_key;
+             goto failed;
         }
         switch (ots) {
         case LMOTS_SHA256_N32_W1:
         case LMOTS_SHA256_N32_W2:
         case LMOTS_SHA256_N32_W4:
         case LMOTS_SHA256_N32_W8:
-            break;
-        default: goto failed;
+             break;
+        default:
+             *error = hss_error_bad_private_key;
+             goto failed;
         }
         lm_type[level] = lm;
         lm_ots_type[level] = ots;
     }
 
-    if (level < MIN_HSS_LEVELS || level > MAX_HSS_LEVELS) goto failed;
-
-    *levels = level;
-
-    /* Make sure that the rest of the private key has PARM_SET_END */
-    unsigned i;
-    for (i = level+1; i<MAX_HSS_LEVELS; i++) {
-        unsigned char c = private_key[PRIVATE_KEY_PARAM_SET + i];
-        if (c != PARM_SET_END) goto failed;
-    }
+    *p_levels = levels;
 
     /* One final check; make sure that the sequence number listed in the */
     /* private key is in range */
@@ -143,7 +160,10 @@ bool hss_get_parameter_set( unsigned *levels,
     sequence_t current_count = get_bigendian(
                  private_key + PRIVATE_KEY_INDEX, PRIVATE_KEY_INDEX_LEN );
 
-    if (current_count > max_count) goto failed;  /* Private key expired */
+    if (current_count > max_count) {
+        *error = hss_error_private_key_expired;
+        goto failed;
+    }
 
     success = true;   /* It worked! */
 failed:
@@ -151,3 +171,32 @@ failed:
     hss_zeroize( private_key, sizeof private_key );
     return success;
 }
+
+/* Compute the max number of signatures we can generate */
+sequence_t hss_get_max_seqno( int levels, const param_set_t *lm_type ) {
+    int total_height = 0;
+    int i;
+
+    for (i=0; i<levels; i++) {
+        unsigned this_height;
+        if (!lm_look_up_parameter_set(lm_type[i], 0, 0, &this_height )) {
+            return 0;
+        }
+        total_height += this_height;
+    }
+
+    if (total_height > 64) total_height = 64;  /* (bounded by 2**64) */
+
+    sequence_t max_seqno = ((sequence_t)2 << (total_height-1)) - 1;
+        /* height-1 so we don't try to shift by 64, and hit undefined */
+        /* behavior */
+
+    /* We use the count 0xffff..ffff to signify 'we've used up all our */
+    /* signatures'.  Make sure that is above max_count, even for */
+    /* parameter sets that can literally generate 2**64 signatures (by */
+    /* letting them generate only 2**64-1) */
+    if (total_height == 64) max_seqno--;
+
+    return max_seqno;
+}
+

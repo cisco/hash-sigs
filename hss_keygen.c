@@ -9,6 +9,7 @@
 #include "hss_thread.h"
 #include "lm_common.h"
 #include "lm_ots_common.h"
+#include "hss_fault.h"
 
 /* Count the number of 1 bits at the end (lsbits) of the integer */
 /* Do it in the obvious way; straightline code may be faster (no */
@@ -107,39 +108,52 @@ bool hss_generate_private_key(
         return false;
     }
 
-    unsigned char private_key[ PRIVATE_KEY_LEN ];
+    unsigned char private_key[ PRIVATE_KEY_LEN(MAX_HSS_LEVELS) ];
 
         /* First step: format the private key */
+    hss_set_private_key_format( private_key, levels );
     put_bigendian( private_key + PRIVATE_KEY_INDEX, 0,
                    PRIVATE_KEY_INDEX_LEN );
-    if (!hss_compress_param_set( private_key + PRIVATE_KEY_PARAM_SET,
+#if FAULT_CACHE_SIG
+        /* Mark all signatures as "not computed yet" */
+    memset( private_key + PRIVATE_KEY_SIG_CACHE, 0,
+            PRIVATE_KEY_SIG_CACHE_LEN(levels) );
+#endif
+    if (!hss_compress_param_set( private_key + PRIVATE_KEY_PARAM_SET(levels),
                    levels, lm_type, lm_ots_type,
-                   PRIVATE_KEY_PARAM_SET_LEN )) {
+                   PRIVATE_KEY_PARAM_SET_LEN(levels) )) {
         info->error_code = hss_error_bad_param_set;
         return false;
     }
-    if (!(*generate_random)( private_key + PRIVATE_KEY_SEED,
+        /* Fill in the maximum seqno */
+    sequence_t max_seqno = hss_get_max_seqno( levels, lm_type );
+    if (max_seqno == 0) {
+        info->error_code = hss_error_bad_param_set;
+        return false;
+    }
+    put_bigendian( private_key + PRIVATE_KEY_MAX(levels), max_seqno,
+                   PRIVATE_KEY_MAX_LEN );
+
+        /* Pick the random seed */
+    if (!(*generate_random)( private_key + PRIVATE_KEY_SEED(levels),
                    PRIVATE_KEY_SEED_LEN )) {
         info->error_code = hss_error_bad_randomness;
         return false;
     }
 
         /* Now make sure that the private key is written to NVRAM */
-    if (update_private_key) {
-        if (!(*update_private_key)( private_key, PRIVATE_KEY_LEN, context)) {
-            /* initial write of private key didn't take */
-            info->error_code = hss_error_private_key_write_failed;
-            hss_zeroize( private_key, sizeof private_key );
-            return false;
-        }
-    } else {
-        if (context == 0) {
-            /* We weren't given anywhere to place the private key */
-            info->error_code = hss_error_no_private_buffer;
-            hss_zeroize( private_key, sizeof private_key );
-            return false;
-        }
-        memcpy( context, private_key, PRIVATE_KEY_LEN );
+    if (!update_private_key && !context) {
+        /* We weren't given anywhere to place the private key */
+        info->error_code = hss_error_no_private_buffer;
+        hss_zeroize( private_key, sizeof private_key );
+        return false;
+    }
+    enum hss_error_code e = hss_write_private_key_no_w( private_key,
+                  PRIVATE_KEY_LEN(levels), 0, update_private_key, context );
+    if (e != hss_error_none) {
+        info->error_code = e;
+        hss_zeroize( private_key, sizeof private_key );
+        return false;
     }
 
     /* Figure out what would be the best trade-off for the aux level */
@@ -156,7 +170,7 @@ bool hss_generate_private_key(
 
     unsigned char I[I_LEN];
     unsigned char seed[SEED_LEN];
-    if (!hss_generate_root_seed_I_value( seed, I, private_key+PRIVATE_KEY_SEED,
+    if (!hss_generate_root_seed_I_value( seed, I, private_key+PRIVATE_KEY_SEED(levels),
                                     lm_type[0], lm_ots_type[0])) {
         info->error_code = hss_error_internal;
         hss_zeroize( private_key, sizeof private_key );
@@ -171,39 +185,30 @@ bool hss_generate_private_key(
     /* appears in the aux data, and 4*log2 of the number of core we have */
     unsigned num_cores = hss_thread_num_tracks(info->num_threads);
     unsigned level;
-    unsigned char *dest = 0;  /* The area we actually write to */
-    void *temp_buffer = 0;  /* The buffer we need to free when done */
-    for (level = h0-1; level > 2; level--) {
+    for (level = h0-1; level > 0; level--) {
             /* If our bottom-most aux data is at this level, we want it */
-        if (expanded_aux_data && expanded_aux_data->data[level]) {
-                /* Write directly into the aux area */
-            dest = expanded_aux_data->data[level];
-            break;
-        }
+        if (expanded_aux_data && expanded_aux_data->data[level]) break;
 
             /* If going to a higher levels would mean that we wouldn't */
             /* effectively use all the cores we have, use this level */ 
-        if ((1<<level) < 4*num_cores) {
-                /* We'll write into a temp area; malloc the space */
-            size_t temp_buffer_size = (size_t)size_hash << level;
-            temp_buffer = malloc(temp_buffer_size);
-            if (!temp_buffer) {
-                /* Couldn't malloc it; try again with s smaller buffer */
-                continue;
-            }
-                /* Use this buffer */
-            dest = temp_buffer;
-            break;
-        }
+        if ((1<<level) < 4*num_cores) break;
     }
 
-    /* Worse comes the worse, if we can't malloc anything, use a */
-    /* small backup buffer */
-    unsigned char worse_case_buffer[ 4*MAX_HASH ];
-    if (!dest) {
-        dest = worse_case_buffer;
-        /* level == 2 if we reach here, so the buffer is big enough */
+    /* Get the buffer where our parallel process is going to write into */
+    /* We'll either use the aux data itself, or a temp buffer */
+    unsigned temp_buffer_size;
+    unsigned char *dest;
+    if (expanded_aux_data && expanded_aux_data->data[level]) {
+        /* We're going directly into the aux data */
+        dest = expanded_aux_data->data[level];
+        temp_buffer_size = 1;  /* We're not using the temp buffer */
+     } else {
+        /* We're going into the temp buffer */
+        dest = 0;
+        temp_buffer_size = (size_t)size_hash << level;
     }
+    unsigned char temp_buffer[ temp_buffer_size ];
+    if (!dest) dest = temp_buffer;
 
     /*
      * Now, issue all the work items to generate the intermediate hashes
@@ -215,6 +220,7 @@ bool hss_generate_private_key(
 
     struct intermed_tree_detail details;
         /* Set the values in the details structure that are constant */
+    details.level = 0;
     details.seed = seed;
     details.lm_type = lm_type[0];
     details.lm_ots_type = lm_ots_type[0];
@@ -272,11 +278,11 @@ bool hss_generate_private_key(
         info->error_code = got_error;
         hss_zeroize( private_key, sizeof private_key );
         if (update_private_key) {
-            (void)(*update_private_key)(private_key, PRIVATE_KEY_LEN, context);
+            (void)(*update_private_key)(private_key, PRIVATE_KEY_LEN(levels),
+                                                                  context);
         } else {
-            hss_zeroize( context, PRIVATE_KEY_LEN );
+            hss_zeroize( context, PRIVATE_KEY_LEN(levels) );
         }
-        free(temp_buffer);
         return false;
     }
 
@@ -288,6 +294,7 @@ bool hss_generate_private_key(
 
     /* Generate the top levels of the tree, ending with the root node */
     merkle_index_t r, leaf_node;
+    hss_set_level(0);
     for (r=level_nodes, leaf_node = 0; leaf_node < level_nodes; r++, leaf_node++) {
 
         /* Walk up the stack, combining the current node with what's on */
@@ -333,7 +340,7 @@ bool hss_generate_private_key(
 
     /* Complete the computation of the aux data */
     hss_finalize_aux_data( expanded_aux_data, size_hash, h,
-                           private_key+PRIVATE_KEY_SEED );
+                           private_key+PRIVATE_KEY_SEED(levels) );
 
     /* We have the root value; now format the public key */
     put_bigendian( public_key, levels, 4 );
@@ -350,7 +357,6 @@ bool hss_generate_private_key(
     /* Hey, what do you know -- it all worked! */
     hss_zeroize( private_key, sizeof private_key ); /* Zeroize local copy of */
                                                    /* the private key */
-    free(temp_buffer);
     return true;
 }
 
@@ -362,5 +368,5 @@ size_t hss_get_private_key_len(unsigned levels,
                    const param_set_t *lm_ots_type) {
        /* A private key is a 'public object'?  Yes, in the sense that we */
        /* export it outside this module */
-    return PRIVATE_KEY_LEN;
+    return PRIVATE_KEY_LEN(levels);
 }

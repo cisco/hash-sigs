@@ -2,6 +2,7 @@
 
 #include <pthread.h>
 #include <string.h>
+#include "hss_malloc.h"
 
 /*
  * This is an implementation of our threaded abstraction using the
@@ -15,11 +16,7 @@
  * implementation handy to test it
  */
 
-#define MAX_THREAD 16   /* Number try to create more than 16 threads, no */
-                        /* matter what the application tries to tell us */
-#define DEFAULT_THREAD 16 /* The number of threads to run if the */
-                        /* application doesn't tell us otherwise (e.g. */
-                        /* passes in 0) */
+#include "config.h"
 
 #define MIN_DETAIL 16   /* So the alignment kludge we do doesn't waste space */
 
@@ -84,19 +81,20 @@ struct thread_collection *hss_thread_init(int num_thread) {
                                     /* single threaded */
     if (num_thread > MAX_THREAD) num_thread = MAX_THREAD;
 
-    struct thread_collection *col = malloc( sizeof *col );
+    struct thread_collection *col = hss_malloc( sizeof *col,
+                                                   mu_thread_collection );
     if (!col) return 0;  /* On malloc failure, run single threaded */
 
     col->num_thread = num_thread;
 
     if (0 != pthread_mutex_init( &col->lock, 0 )) {
-        free(col);
+        hss_free(col);
         return 0;
     }
 
     if (0 != pthread_mutex_init( &col->write_lock, 0 )) {
         pthread_mutex_destroy( &col->lock );
-        free(col);
+        hss_free(col);
         return 0;
     }
 
@@ -125,7 +123,7 @@ static void *worker_thread( void *arg ) {
         (w->function)(w->x.detail, col);
 
         /* Ok, we did that */
-        free(w);
+        hss_free(w);
 
         /* Check if there's anything else to do */
         pthread_mutex_lock( &col->lock );
@@ -171,7 +169,7 @@ void hss_thread_issue_work(struct thread_collection *col,
     size_t extra_space;
     if (size_detail_structure < MIN_DETAIL) extra_space = 0;
     else extra_space = size_detail_structure - MIN_DETAIL;
-    struct work_item *w = malloc(sizeof *w + extra_space);
+    struct work_item *w = hss_malloc(sizeof *w + extra_space, mu_work_item);
 
     if (!w) {
         /* Can't allocate the work structure; fall back to single-threaded */
@@ -218,7 +216,7 @@ void hss_thread_issue_work(struct thread_collection *col,
                     /* Hmmm, couldn't spawn it; fall back */
                     default: /* On error condition */
                     pthread_mutex_unlock( &col->lock );
-                    free(w);
+                    hss_free(w);
                     function( detail, col );
                     return;
                 }
@@ -276,7 +274,7 @@ void hss_thread_done(struct thread_collection *col) {
 
     pthread_mutex_destroy( &col->lock );
     pthread_mutex_destroy( &col->write_lock );
-    free(col);
+    hss_free(col);
 }
 
 void hss_thread_before_write(struct thread_collection *col) {

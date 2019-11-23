@@ -11,6 +11,7 @@
 #include "endian.h"
 #include "hash.h"
 #include "hss_zeroize.h"
+#include "hss_fault.h"
 
 /*
  * The structure of aux data
@@ -143,9 +144,9 @@ struct expanded_aux_data *hss_expand_aux_data( const unsigned char *aux_data,
         /* Now, MAC the entire aux file */
         union hash_context ctx;
         unsigned char key[ MAX_HASH ];
-        compute_seed_derive( key, w->tree[0]->h, w->working_key_seed, &ctx );
+        compute_seed_derive( key, w->tree[0][0]->h, w->working_key_seed, &ctx );
         unsigned char expected_mac[ MAX_HASH ];
-        compute_hmac( expected_mac, w->tree[0]->h, size_hash, &ctx, key,
+        compute_hmac( expected_mac, w->tree[0][0]->h, size_hash, &ctx, key,
                           orig_aux_data, aux_data - orig_aux_data );
         hss_zeroize( key, size_hash );
         hss_zeroize( &ctx, sizeof ctx );
@@ -214,6 +215,8 @@ void hss_save_aux_data( struct expanded_aux_data *data, unsigned level,
  */
 static void compute_seed_derive( unsigned char *result, unsigned hash,
      const unsigned char *seed, union hash_context *ctx) {
+    hss_set_level(0);
+    hss_set_hash_reason(h_reason_other);
     hss_init_hash_context( hash, ctx );
     unsigned char prefix[ DAUX_PREFIX_LEN ];
     memset( prefix, 0, DAUX_D );
@@ -250,6 +253,8 @@ static void compute_hmac( unsigned char *dest,
     unsigned block_size = hss_hash_blocksize(hash);
 
     /* Step 1: first phase of the HMAC */
+    hss_set_level(0);
+    hss_set_hash_reason(h_reason_other);
     hss_init_hash_context( hash, ctx );
     xor_key( key, IPAD, size_hash );
     hss_update_hash_context( hash, ctx, key, size_hash );
@@ -326,7 +331,7 @@ bool hss_extract_aux_data(const struct expanded_aux_data *aux, unsigned level,
     if (!aux) return false;              /* No aux data */
     if (!aux->data[level]) return false; /* We don't have that specific */
                                      /* level saved */
-    unsigned hash_size = w->tree[0]->hash_size;
+    unsigned hash_size = w->tree[0][0]->hash_size;
 
     /* We do have the data; copy it to the destination */
     memcpy( dest,

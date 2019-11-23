@@ -94,6 +94,7 @@ bool hss_validate_signature_init(
             detail.message_len = l_pubkeylen;
             detail.signature = l_sig;
             detail.signature_len = l_siglen;
+            detail.tree_level = i;
             hss_thread_issue_work( col, validate_internal_sig,
                                    &detail, sizeof detail );
 

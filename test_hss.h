@@ -15,8 +15,11 @@ extern bool test_key_load(bool fast_flag, bool quiet_flag);
 extern bool test_reserve(bool fast_flag, bool quiet_flag);
 extern bool test_thread(bool fast_flag, bool quiet_flag);
 extern bool test_h25(bool fast_flag, bool quiet_flag);
+extern bool test_fault(bool fast_flag, bool quiet_flag);
+extern bool test_update(bool fast_flag, bool quiet_flag);
 
 extern bool check_threading_on(bool fast_flag);
 extern bool check_h25(bool fast_flag);
+extern bool check_fault_enabled(bool fast_flag);
 
 #endif /* TEST_HSS_H_ */

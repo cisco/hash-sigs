@@ -8,6 +8,7 @@
 #include "hash.h"
 #include "endian.h"
 #include "common_defs.h"
+#include "hss_fault.h"
 
 /*
  * This validate a OTS signature for a message.  It doesn't actually use the
@@ -35,6 +36,7 @@ bool lm_ots_validate_signature_compute(
     const void *message, size_t message_len, bool message_prehashed,
     const unsigned char *signature, size_t signature_len,
     param_set_t expected_parameter_set) {
+    hss_set_hash_reason(h_reason_ots_sign);
     if (signature_len < 4) return false;  /* Ha, ha, very funny... */
 
     /* We don't trust the parameter set that's in the signature; verify it */

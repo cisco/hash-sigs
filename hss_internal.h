@@ -15,26 +15,59 @@
                                   /* lm_type and the lm_ots type for a */
                                   /* single level into 1 byte */
 
-#define PARM_SET_END 0xff   /* We set this marker in the parameter set */
-                            /* when fewer than the maximum levels are used */
-
-
 /*
  * The internal structure of a private key
  */
-#define PRIVATE_KEY_INDEX 0
+#define PRIVATE_KEY_FORMAT 0    /* 4 byte description of the key format */
+#define PRIVATE_KEY_FORMAT_NUM_LEVEL 3
+#define PRIVATE_KEY_FORMAT_LEN 4
+#define PRIVATE_KEY_INDEX (PRIVATE_KEY_FORMAT + PRIVATE_KEY_FORMAT_LEN)
 #define PRIVATE_KEY_INDEX_LEN 8  /* 2**64 signatures should be enough for */
                                  /* everyone */
-#define PRIVATE_KEY_PARAM_SET (PRIVATE_KEY_INDEX + PRIVATE_KEY_INDEX_LEN)
-#define PRIVATE_KEY_PARAM_SET_LEN (PARAM_SET_COMPRESS_LEN * MAX_HSS_LEVELS)
-#define PRIVATE_KEY_SEED (PRIVATE_KEY_PARAM_SET + PRIVATE_KEY_PARAM_SET_LEN)
+#define PRIVATE_KEY_CHECKSUM (PRIVATE_KEY_INDEX + PRIVATE_KEY_INDEX_LEN)
+#define PRIVATE_KEY_CHECKSUM_LEN 8
+#if FAULT_CACHE_SIG
+#define PRIVATE_KEY_SIG_CACHE (PRIVATE_KEY_CHECKSUM + PRIVATE_KEY_CHECKSUM_LEN)
+#define PRIVATE_KEY_SIG_CACHE_LEN(levels) ((levels-1) * FAULT_CACHE_LEN)
+#define PRIVATE_KEY_END_WRITABLE(levels) (PRIVATE_KEY_SIG_CACHE + \
+                                    PRIVATE_KEY_SIG_CACHE_LEN(levels)) 
+#else
+#define PRIVATE_KEY_END_WRITABLE(levels) (PRIVATE_KEY_CHECKSUM + \
+                PRIVATE_KEY_CHECKSUM_LEN ) 
+#endif
+/* PRIVATE_KEY_END_WRITABLE is the end of the part of the private key */
+/* that is dynamically written as the key is used */
+#define PRIVATE_KEY_MAX(levels)   PRIVATE_KEY_END_WRITABLE(levels)
+#define PRIVATE_KEY_MAX_LEN 8
+#define PRIVATE_KEY_PARAM_SET(levels) (PRIVATE_KEY_MAX(levels) + \
+                                          PRIVATE_KEY_MAX_LEN)
+#define PRIVATE_KEY_PARAM_SET_LEN(levels) (PARAM_SET_COMPRESS_LEN * levels)
+#define PRIVATE_KEY_SEED(levels) (PRIVATE_KEY_PARAM_SET(levels) + \
+                                  PRIVATE_KEY_PARAM_SET_LEN(levels))
 #if SECRET_METHOD == 2
 #define PRIVATE_KEY_SEED_LEN (SEED_LEN + I_LEN)
 #else
 #define PRIVATE_KEY_SEED_LEN SEED_LEN
 #endif
-#define PRIVATE_KEY_LEN (PRIVATE_KEY_SEED + PRIVATE_KEY_SEED_LEN) /* That's */
-                                                                /* 48 bytes */
+#define PRIVATE_KEY_LEN(levels) (PRIVATE_KEY_SEED(levels) + \
+                        PRIVATE_KEY_SEED_LEN) /* That's 60 bytes, plus */
+                                        /* FAULT_CACHE_LEN+1 per level */
+/*
+ * Routines to read/update the private key
+ */
+enum hss_error_code hss_read_private_key(unsigned char *private_key,
+            struct hss_working_key *w);
+enum hss_error_code hss_write_private_key(unsigned char *private_key,
+            struct hss_working_key *w, int num_cache_sig);
+enum hss_error_code hss_write_private_key_no_w(
+            unsigned char *private_key, size_t len,
+            bool (*read_private_key)(unsigned char *private_key,
+                                    size_t len_private_key, void *context),
+            bool (*update_private_key)(unsigned char *private_key,
+                                    size_t len_private_key, void *context),
+            void *context);
+bool hss_check_private_key(const unsigned char *private_key);
+void hss_set_private_key_format(unsigned char *private_key, int levels);
 
 struct merkle_level;
 struct hss_working_key {
@@ -47,19 +80,28 @@ struct hss_working_key {
                                   /* Will be higher than the 'current count' */
                                   /* if some signaures are 'reserved' */
     sequence_t max_count;         /* The maximum count we can ever have */
+                                  /* (from the parameter set) */
     unsigned autoreserve;         /* How many signatures to attempt to */
                                   /* reserve if the signing process hits */
                                   /* the end of the current reservation */
+
+    bool (*read_private_key)(     /* Function to read the private key */
+            unsigned char *private_key,
+            size_t len_private_key, void *context);
+    bool (*update_private_key)(   /* Function to write the private key */
+            unsigned char *private_key,
+            size_t len_private_key, void *context);
+    void *context;                /* Context pointer for the above two */
 
     size_t signature_len;         /* The length of the HSS signature */
 
     unsigned char *stack;         /* The stack memory used by the subtrees */
 
         /* The private key (in its entirety) */
-    unsigned char private_key[PRIVATE_KEY_LEN];
+    unsigned char private_key[PRIVATE_KEY_LEN(MAX_HSS_LEVELS)];
         /* The pointer to the seed (contained within the private key) */
         /* Warning: nonsyntaxic macro; need to be careful how we use this */
-#define working_key_seed private_key + PRIVATE_KEY_SEED
+#define working_key_seed private_key + PRIVATE_KEY_SEED(w->levels)
 
     size_t siglen[MAX_HSS_LEVELS]; /* The lengths of the signatures */
                                   /* generated by the various levels */
@@ -71,8 +113,13 @@ struct hss_working_key {
                                   /* current root value, signed by the */
                                   /* previous level.  Unused for the */
                                   /* topmost level */
-    struct merkle_level *tree[MAX_HSS_LEVELS]; /* The structures that manage */
-                                  /* each individual level */
+    struct merkle_level *tree[FAULT_RECOMPUTE+1][MAX_HSS_LEVELS]; /* The */
+                                  /* structures that manage each individual */
+                                  /* level.  The [1] versions are redundant */
+                                  /* copies used to double check */
+                                  /* Note: tree[1][0] == tree[0][0] */
+                                  /* Because errors in the top level tree */
+                                  /* don't allow forgeries */
 };
 
 #define MIN_SUBTREE    2  /* All subtrees (other than the root subtree) have */
@@ -172,6 +219,9 @@ bool hss_compress_param_set( unsigned char *compressed,
                    const param_set_t *lm_ots_type,
                    size_t len_compressed );
 
+/* Internal function to compute the maximum number of seqno for a parameter set */
+sequence_t hss_get_max_seqno( int levels, const param_set_t *lm_type );
+
 /* Internal function to generate the root seed, I value (based on the */
 /* private seed).  We do this (rather than selecting them  at random) so */
 /* that we don't need to store them in our private key; we can recompute */
@@ -185,7 +235,8 @@ bool hss_generate_root_seed_I_value(unsigned char *seed, unsigned char *I,
 bool hss_generate_child_seed_I_value( unsigned char *seed, unsigned char *I,
                    const unsigned char *parent_seed,
                    const unsigned char *parent_I, merkle_index_t index,
-                   param_set_t parent_lm, param_set_t parent_ots );
+                   param_set_t parent_lm, param_set_t parent_ots,
+                   int child_level );
 
 /* Combine two internal nodes */
 void hss_combine_internal_nodes( unsigned char *dest,
@@ -198,6 +249,15 @@ bool hss_create_signed_public_key(unsigned char *signed_key,
                                     struct merkle_level *tree,
                                     struct merkle_level *parent,
                                     struct hss_working_key *w);
+#if FAULT_RECOMPUTE
+bool hss_doublecheck_signed_public_key(const unsigned char *signed_key,
+                                    size_t len_signature,
+                                    struct merkle_level *tree,
+                                    struct merkle_level *parent,
+                                    struct hss_working_key *w);
+#endif
+/* This needs to be called after we've generated a signature */
+void hss_step_tree(struct merkle_level *tree);
 
 /* Used to generate the bottom nodes of a subtree in parallel */
 struct intermed_tree_detail {
@@ -211,6 +271,7 @@ struct intermed_tree_detail {
     const unsigned char *I;
     unsigned node_count;
     enum hss_error_code *got_error;
+    int level;         /* Which Merkle tree within the hypertree */
 };
 struct thread_collection;
 void hss_gen_intermediate_tree(const void *data,
@@ -233,6 +294,7 @@ struct verify_detail {
     size_t message_len;
     const unsigned char *signature;
     size_t signature_len;
+    int tree_level;
 };
 void validate_internal_sig(const void *data,
                                struct thread_collection *col);
@@ -240,5 +302,9 @@ void validate_internal_sig(const void *data,
 struct seed_derive;
 void lm_ots_generate_randomizer(unsigned char *c, unsigned n,
                                 struct seed_derive *seed);
+
+bool hss_all_zero( unsigned char *s, size_t len);
+bool hss_compute_hash_for_cache( unsigned char *hash_output,
+                                 const unsigned char *sig, size_t sig_len );
 
 #endif /* HSS_INTERNAL_H_ */

@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdarg.h>
+#include <string.h>
 #include "hss.h"
 #include "test_hss.h"
 
@@ -10,8 +11,17 @@ static bool rand_1(void *output, size_t len) {
     return true;
 }
 
-static bool update_fail(unsigned char *priv_key, size_t len_priv_key, void *context) {
-    return false;
+static bool read_private_key(unsigned char *priv_key, size_t len_priv_key, void *context) {
+    memcpy( priv_key, context, len_priv_key );
+    return true;
+}
+
+static bool force_fail = false;
+
+static bool update_private_key(unsigned char *priv_key, size_t len_priv_key, void *context) {
+    if (force_fail) return false;
+    memcpy( context, priv_key, len_priv_key );
+    return true;
 }
 
 static bool all_zeros(unsigned char *p, size_t len) {
@@ -97,15 +107,17 @@ static bool test_parm( int d, long num_sig, ... ) {
     if (!sig) return false;
     unsigned char privkey[HSS_MAX_PRIVATE_KEY_LEN];
 
+    force_fail = false;
     if (!hss_generate_private_key( rand_1, d, lm_type, ots_type,
-                                   NULL, privkey, pubkey, pubkey_size,
+                                   update_private_key, privkey, pubkey, pubkey_size,
                                    NULL, 0, 0)) {
         printf( "Pubkey gen failure\n" );
         free(sig);
         return false;
     }
 
-    struct hss_working_key *w = hss_load_private_key(NULL, privkey,
+    struct hss_working_key *w = hss_load_private_key(read_private_key,
+                       update_private_key, privkey,
                        0, NULL, 0, 0 );
     if (!w) {
         printf( "Error loading working key\n" );
@@ -120,7 +132,7 @@ static bool test_parm( int d, long num_sig, ... ) {
     {
         /* Try to generate a signature with a buffer that's too short */
         struct hss_extra_info info = { 0 };
-        bool success = hss_generate_signature( w, NULL, privkey,
+        bool success = hss_generate_signature( w,
                       message, sizeof message,
                       sig, sig_size-1, &info );
         if (success) {
@@ -135,30 +147,13 @@ static bool test_parm( int d, long num_sig, ... ) {
              free(sig);
              return false;
         }
-
-        /* Try to generate a signature with a buffer when the update fails */
-        success = hss_generate_signature( w, update_fail, NULL,
-                      message, sizeof message,
-                      sig, sig_size, &info );
-        if (success || !all_zeros(sig, sig_size)) {
-             printf( "Error: signature succeeded when key update failed\n" );
-             hss_free_working_key(w);
-             free(sig);
-             return false;
-        }
-        if (hss_extra_info_test_error_code(&info) != hss_error_private_key_write_failed) {
-             printf( "Error: update failure gives wrong error\n" );
-             hss_free_working_key(w);
-             free(sig);
-             return false;
-        }
     }
 
     bool retval = true;
     for (i=0; i<2000; i++) {
         struct hss_extra_info info;
         hss_init_extra_info( &info );
-        bool success = hss_generate_signature( w, NULL, privkey,
+        bool success = hss_generate_signature( w,
                       message, sizeof message,
                       sig, sig_size, &info );
 
@@ -248,6 +243,32 @@ static bool test_parm( int d, long num_sig, ... ) {
 
         /* If the signature was too short, fail */
         if (offset != sig_size) goto failed;
+    }
+
+    if (i == 2000) {
+        struct hss_extra_info info;
+        hss_init_extra_info( &info );
+
+        /* Try to generate a signature with a buffer when the update fails */
+        /* We do this at the end because it'll advance the current count, */
+        /* which would the above test doesn't expect */
+        force_fail = true;
+        bool success = hss_generate_signature( w,
+                      message, sizeof message,
+                      sig, sig_size, &info );
+        force_fail = false;
+        if (success || !all_zeros(sig, sig_size)) {
+             printf( "Error: signature succeeded when key update failed\n" );
+             hss_free_working_key(w);
+             free(sig);
+             return false;
+        }
+        if (hss_extra_info_test_error_code(&info) != hss_error_private_key_write_failed) {
+             printf( "Error: update failure gives wrong error\n" );
+             hss_free_working_key(w);
+             free(sig);
+             return false;
+        }
     }
 
     hss_free_working_key(w);

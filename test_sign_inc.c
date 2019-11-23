@@ -18,19 +18,9 @@ static bool generate_random(void *output, size_t length) {
     return true;
 }
 
-/* We have no reason to write the key updates anywhere */
-static bool ignore_update(unsigned char *private_key, size_t len, void *ctx) {
-    return true;
-}
-
 static bool run_test(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
                      unsigned num_iter, bool at_end) {
 
-    size_t len_private_key = hss_get_private_key_len(d, lm_array, lm_ots_array );
-    if (len_private_key == 0 || len_private_key > HSS_MAX_PRIVATE_KEY_LEN) { 
-        printf( "    Len private key failed\n" );
-        return false;
-    }
     unsigned char private_key[HSS_MAX_PRIVATE_KEY_LEN];
 
     unsigned len_public_key = hss_get_public_key_len(d, lm_array, lm_ots_array );
@@ -60,13 +50,16 @@ static bool run_test(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
         return false;
     }
 
+    unsigned char private_key_2[HSS_MAX_PRIVATE_KEY_LEN];
+    memcpy( private_key_2, private_key, HSS_MAX_PRIVATE_KEY_LEN );
+
     /* Load the private key into memory (twice!) */
     struct hss_working_key *w = hss_load_private_key(
-                           NULL, private_key,
+                           NULL, NULL, private_key,
                            0,     /* Minimal memory */
                            aux_data, sizeof aux_data, 0 );
     struct hss_working_key *w2 = hss_load_private_key(
-                           NULL, private_key,
+                           NULL, NULL, private_key_2,
                            0,     /* Minimal memory */
                            aux_data, sizeof aux_data, 0 );
     if (!w || !w2) {
@@ -87,8 +80,7 @@ static bool run_test(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
 
         /* Generate a signature using the standard API */
         unsigned char message[3] = "ABC";
-        if (!hss_generate_signature( w, ignore_update, NULL,
-                   message, sizeof message,
+        if (!hss_generate_signature( w, message, sizeof message,
                    sig_1, len_sig, 0 )) {
             printf( "    *** failed normal signature\n" );
             hss_free_working_key(w);
@@ -101,8 +93,7 @@ static bool run_test(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
         struct hss_sign_inc ctx;
         struct hss_extra_info info;
         hss_init_extra_info( &info );
-        if (!hss_sign_init(&ctx, w2, ignore_update, NULL,
-                sig_2, len_sig, &info )) {
+        if (!hss_sign_init(&ctx, w2, sig_2, len_sig, &info )) {
             printf( "    *** failed signature init\n" );
             hss_free_working_key(w);
             hss_free_working_key(w2);
@@ -120,7 +111,6 @@ static bool run_test(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
             free(sig_1); free(sig_2);
             return false;
         }
-
 
         if (!hss_sign_update( &ctx, "A", 1) ||
             !hss_sign_update( &ctx, "BC", 2)) {
@@ -154,8 +144,7 @@ static bool run_test(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
     if (at_end) {
         struct hss_sign_inc ctx;
         struct hss_extra_info info = { 0 };
-        if (hss_sign_init(&ctx, w2, ignore_update, NULL,
-                sig_2, len_sig, &info )) {
+        if (hss_sign_init(&ctx, w2, sig_2, len_sig, &info )) {
             printf( "    *** signinit succeeded when it should have failed\n" );
             hss_free_working_key(w);
             hss_free_working_key(w2);
@@ -186,6 +175,7 @@ static bool run_test_2(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
         return false;
     }
     unsigned char private_key[HSS_MAX_PRIVATE_KEY_LEN];
+    unsigned char private_key_2[HSS_MAX_PRIVATE_KEY_LEN];
 
     unsigned len_public_key = hss_get_public_key_len(d, lm_array, lm_ots_array );
     if (len_public_key == 0 || len_public_key > HSS_MAX_PUBLIC_KEY_LEN) { 
@@ -213,14 +203,15 @@ static bool run_test_2(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
         printf( "    Gen private key failed\n" );
         return false;
     }
+    memcpy( private_key_2, private_key, HSS_MAX_PRIVATE_KEY_LEN );
 
     /* Load the private key into memory (twice!) */
     struct hss_working_key *w = hss_load_private_key(
-                           NULL, private_key,
+                           NULL, NULL, private_key,
                            0,     /* Minimal memory */
                            aux_data, sizeof aux_data, 0 );
     struct hss_working_key *w2 = hss_load_private_key(
-                           NULL, private_key,
+                           NULL, NULL, private_key_2,
                            0,     /* Minimal memory */
                            aux_data, sizeof aux_data, 0 );
     if (!w || !w2) {
@@ -244,8 +235,7 @@ static bool run_test_2(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
     for (i = 0; i<num_iter; i++) {
 
         /* Start the signature with the incremental API */
-        if (!hss_sign_init(&ctx[i], w2, ignore_update, NULL,
-                &sig[i * len_sig], len_sig, 0 )) {
+        if (!hss_sign_init(&ctx[i], w2, &sig[i * len_sig], len_sig, 0 )) {
             printf( "    *** failed signature init\n" );
             hss_free_working_key(w);
             hss_free_working_key(w2);
@@ -267,8 +257,7 @@ static bool run_test_2(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
 
         /* Generate a signature using the standard API */
         unsigned char message[3] = "ABC";
-        if (!hss_generate_signature( w, ignore_update, NULL,
-                   message, sizeof message,
+        if (!hss_generate_signature( w, message, sizeof message,
                    sig_2, len_sig, 0 )) {
             printf( "    *** failed normal signature\n" );
             hss_free_working_key(w);

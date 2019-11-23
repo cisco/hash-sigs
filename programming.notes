@@ -19,6 +19,59 @@ sources.
   do leave to the user (such as the functions to load/store the private key)
   are there in attempt to make it easier to use the system securely.
 
+- Configuation file config.h
+  This file contains a set of tweakable parameters that the application may
+  want to customize for its use (and hardware platform).  Here are the current
+  flags:
+  MAX_THREAD This is the maximum number of child threads we will ever try
+          to spawn.
+  DEFAULT_THREAD This is the number of child threads we can attempt to spawn
+          if the application doesn't tell us otherwise.
+  FAULT_CACHE_SIG If this flag is set, then his package attempts to implement
+          protection against fault injectio attacks; it works by hashing the
+          internal signatures (when they are first computed) and storing them
+          in the private key; if we later recompute them, we check to see if
+          they have changed (and if so, we declare an error).  If you have an
+          attacker that can plausibly make you miscompute something, this (or
+          the next one) is of interest.  Turning this on does increase the
+          size of the private key; in addiiton, if you're doing autoreserve,
+          this may increase the number of times we update the private key.
+          This is fairly cheap, and so this is turned on in the release
+          package (and you can turn it off, if you want).
+  FAULT_CACHE_LEN If FAULT_CACHE_SIG is set, then this determines the size of
+          the hash we store in the private key; larger values make it harder
+          for an attacker that can precisely target faults to get one past
+          this logic; smaller values use up less room in the private key.
+  FAULT_RECOMPUTE If this flag is set, then this package attempts to implement
+          protection against fault injectio attacks; it works by computing the
+          public keys and internal signatures twice (and indepdently); if they
+          don't match, then an error is declared. If you have an attacker
+          that can plausibly make you miscompute something, this (or the
+          previous one) is of interest.  Turning this on does increase the
+          time taken and the memory used.
+  SECRET_METHOD This controls how seeds are generated
+          Note that changing this (or SECRET_MAX) will invalidate any existing
+          private keys.
+          0 -> Use the algorthm defined in Appendix A of the draft
+          1 -> Use a side channel resisteant process which limits the number
+               of distint hashes a secret value is used in.
+  SECRET_MAX If SECRET_METHOD==1, this we limit the number of hashes a secret
+               is sed with to 2**SECRET_MAX
+  USE_OPENSSL This defines whether we attempt to link to OpenSSL (only the
+          SHA256 implementation), or whether we use a slower portable C
+          version
+  ALLOW_VERBOSE If set, we insert debugging code that, if the global
+          hss_verbose is also set, we print out hash inputs and outputs.
+          This works only if USE_OPEN_SSL==0.
+          Obviously, this is not something you want to do on delivered code,
+          and is *really* chatty (and I'd recommend you turn off
+          multithreading during the test).
+  TEST_INSTRUMENTATION If set, we insert instrumentation code.  Currently,
+          the only instrumentation is to test mallocs and to delibberately
+          introduce faults into the hash functions (to test out the fault
+          protection code).  Obviously, the latter is not something you want
+          to do on delivered code,
+
 - Merkle trees, subtrees
   The core of this system is the signer, and the working key.  To sign
   a message, we generate the OTS signature for that message, and generate
@@ -103,6 +156,8 @@ sources.
   operations than expected (e.g. one of its ACTIVE_TREEs is on the right
   side, and so there's no need for us to update the BUILDING_TREE), and so
   the caller doesn't see any unexpected expense at all.
+  A third difference (if fault recomputation is on) is that we don't keep a
+  redundant copy of the top level LMS tree.
   When we load a private key in memory, the bulk of the work is initializing
   the subtrees to be what we'd expect them to hold, based on what the current
   count is.  Actually, we advance the building and next trees to be slightly
@@ -167,22 +222,52 @@ sources.
   this subsystem, and what they really mean
   private key
       This is what the raw private key looks like.  It's not a formal C
-      structure; instead, it is a byte array, currently 48 bytes long,
-      split up into:
+      structure; instead, it is a byte array, split up into:
+      - 3 bytes of key format; this is to allow us to modify the key format
+        in the future, without causing disasters if someone tries to load
+        a previous key format.  The 3 bytes are:
+           0x01 - The current format
+           SECRET_MAX - The SECRET_MAX this key was generated with; 0xff
+                   if SECRET_METHOD == 0
+           FAULT_CACHE_LEN - The FAULT_CACHE_LEN this key uses; 0x00 if
+                   FAULT_CACHE_SIG == 0
+      - 1 byte of L; the number of tree levels in the HSS structure; between
+        1 and 8
       - 8 bytes of count; this is the state that gets updated with every
         signature, and consists of a bigendian count of the number of
         signatures so far.  By convention, a setting of 0xffffffffffffffff
-        means 'we're used up all our signatures'
-      - 8 bytes of parameter set, in a compressed format.  This is here so
+        means 'we're used up all our signatures'.
+      - 8 bytes of checksum; this is the first 8 bytes of the SHA-256 of
+        the private key (skipping the checksum).  This is here to detect
+        when the private key is corrupted.  It can't detect rollbacks or
+        malicious modifications of the private key; it will detect
+        accidental ones
+      - (L-1) * FAULT_CACHE_LEN of hashed signed public keys; when we
+        generate a signed public key (and it is possible that, on a
+        key reload, we'll recreate that signed public key), we'll hash
+        the signed public key, and place the first FAULT_CACHE_LEN bytes
+        here (with the lowest level public key being the first).  The
+        public keys here are from the count listed in the count field
+        above (which might be in front of the count in the working key
+        if there is a reservation active).  Not present if
+        FAULT_CACHE_SIG == 0
+      - 8 bytes of max count; this is the maximum value that we'll allow
+        for the count.  This is here so that, in the future, we can issue
+        private keys that are of limited range (the deligated subkey idea)
+      - L bytes of parameter set, in a compressed format.  This is here so
         that the application needn't tell us what the parmaeter set when
         loading a key (and can't get it wrong)
       - 32 bytes of random seed; this is where all the security comes from.
         It is 32 bytes (256 bits) so Grover's algorthm can't recover it.
       This is a flat set of bytes, because we hand it to read_private_key
       and update_private_key routines, which are expected to read/write
-      them to long term storage.
-      Random musing: should we have included a version parameter (so we
-      could change the format without breaking things???)
+      them to long term storage.  This key is a total of
+      52 + L*(FAULT_CACHE_LEN+1) bytes long.
+      We put things in this order to place the frequently modified fields
+      up front.  Hence, if we need to update the hashed signatures, we're
+      able to ask the NV write routine to update a minimal number of bytes
+      (of course, the NV write routine may decide just to update the entire
+      key; we're just giving the NV write the option).
   struct hss_working_key
       This structure holds all the current state of a loaded private key.
       It contains a copy of the private key (so we can write it out as
@@ -202,6 +287,11 @@ sources.
       And, when we swap the active subtree with a building/next, we move
       the stack pointer from the old building/next subtree to the new
       (as the new active one doesn't need it).
+      In addition, the tree[redux][level] points to the tree level
+      data structure; for redux == 1, this points to the redundant
+      tree level (for fault hardening).  We also special case
+      tree[0][0] == tree[1][0], as the top level tree needn't be
+      redundant (as we never sign its public key).
   struct merkle_level
       Actually, this is not a Merkle tree (even though the code typically
       names variables of this type 'tree').  Instead, it stands for a
@@ -328,9 +418,10 @@ sources.
            the environment (rng failure, nvread/write failure, malloc
            failure)
      - hss_range_my_problem; these are errors caused by something internal
-           to this package; currently, they're all dubbed hss_error_internal,
-           and are caused by either something scribbling over our memory
-           or a bug somewhere
+           to this package; currently, they're either hss_error_internal,
+           caused by either something scribbling over our memory
+           or a bug somewhere; or hss_error_fault_detected (the fault
+           detection logic detected a miscompute).
    struct seed_derive
      This is the structure we use to derive keys in a potentially side
      channel resistant manner.  There are two different versions of this
@@ -357,7 +448,7 @@ sources.
     The programmer can modify the SECRET_METHOD/SECRET_MAX settings to
     change the efficiency/side channel resistance mix; however any
     such change modifies the mapping between seeds and private LM-OTS
-    values (that is, your private keys no longer work).
+    values (that is, your existing private keys no longer work).
 
 - Side channel resistance and key derivation.
   We are inherently resistant to timing and cache-based side channel attacks
@@ -380,6 +471,49 @@ sources.
   children.  Decreasing SECRET_MAX takes a bit more time (as the tree becomes
   deeper), however even SECERET_MAX==1 (smallest allowed value) isn't that
   expensive.
+
+- Protection against Fault attacks
+  One concern is that if we were to miscompute a hash (and hence miscompute
+  an LMS public key), we might end up signing one public key with the parent
+  OTS key, and then at a different time, compute it correctly, and thus sign
+  a different public key with the same OTS key.  This issue was first raised
+  by https://eprint.iacr.org/2018/674.pdf in the context of Sphincs; the same
+  concern is valid here.
+  This package implements optional protection against this fault attack,
+  enabled by the FAULT_RECOMPUTE or the FAULT_CACHE_SIG flags.  We actually
+  implement two separate protections; the user can choose to use either or
+  both.  BTW: why did we bother with two separate methods?  Well, I first
+  implemented the FAULT_RECOMPUTE method; after that work was done, I realized
+  that the FAULT_CACHE_SIG method would also work (and be cheaper), and so I
+  implemented that (and had no good reason to back out the FAULT_RECOMPUTE
+  code).
+  If the FAULT_CACHE_SIG flag is set, then the first time we generate an
+  signed public key (to insert into an HSS signature), we store a hash of that
+  signed public key in the private key; if we ever regenerate it (because of a
+  reload), we'll compare the new hash with what's in the private key (and fail
+  if they differ).  One exception, if we generate a signed public key and find
+  that we'll never recreate it (because the current reservation covers the
+  entire use of that public key), we won't write it.
+  If the FAULT_RECOMPUTE flag is set, we will redundently recompute the LMS
+  public keys (other than the top one), and if they get out of sync, fail.
+  Because a fault attack works by having two different public keys signed by
+  the same OTS private key, either of these methods protect against this.
+  You enable this protection by setting either the FAULT_RECOMPUTE or the
+  FAULT_CACHE_SIG in config.h to 1 and recompiling (or you could turn on
+  both, if you are extra paranoid, and don't mind both costs).
+  The costs of FAULT_CACHE_SIG: this increases the size of the private key.
+  In addition, if you're using the autoreserve feature (to decrease the
+  number of writes to NVRAM), this may increase it somewhat (because sometimes
+  we'll need to update the hsahes in the private key, even when our
+  reservation isn't quite up yet.  However, the additional computational costs
+  are minimal.
+  The costs of FAULT_RECOMPUTE: we increase both the signature generation
+  time (althogh multithreading helps here; we place the additional
+  computation into additional threads) and key load time (multithreading
+  doesn't help - we already max out the number of threads), and we
+  increase our memory footprint somewhat.  Note that if you use L=1, then
+  fault attacks aren't actually a concern (and you also don't get charged
+  the additional computational costs).
   
 - Threading architecture
   We support doing operations on multiple threads, however we'd rather not
@@ -440,8 +574,9 @@ sources.
   Also, while the key generation and loading can take advantage of as many
   threads as they can get, the signature generation and verification logic
   can't.  The signature generation logic is limited by the number of subtree
-  levels in the bottom merkle tree (plus one); the signature verification
-  logic is limited to the number of merkle levels.
+  levels in the bottom merkle tree (possibly times 2 if you're doing fault
+  hardening), plus one; the signature verification logic is limited to the
+  number of merkle levels.
 
 - Use of malloc
   If you go through the code, you'll see an occasional call to malloc.  In
@@ -458,10 +593,10 @@ sources.
   of memory, hence we feel we don't need a plan B there.
 
 - Use of Variable Length Arrays
-  Now, we used to use VLAs (a C99 language feature) at places.  However,
-  someone's compiler couldn't handle them (even though they implemented the
-  rest of the C99 features we used), and so we went and reworked the code to
-  remove them.  In any case, removing the VLAs might make this code a bit more
+  We used to use VLAs (a C99 language feature) at places.  However, someone's
+  compiler couldn't handle them (even though it implemented the rest of the
+  C99 features we used), and so we went and reworked the code to remove them.
+  In any case, removing the VLAs might make this code a bit more
   small-end-device friendly (as those small devices tend not to have huge
   stacks).
 
@@ -475,39 +610,78 @@ sources.
   someone to cause us to misbehave by modifying the aux data).
 
 - Use of globals
-  There are no globals (other than the optional debugging flag hss_verbose).
-  All memory is either a buffer provided by the calling application,
-  dynamically allocated (malloc), or automatic (stack).  Globals are evil,
-  reentrancy is good.  The regression code does have globals (for things like
-  coordinating with the randomness generator; no normal program has any need
-  for that); the regression code isn't intended for use for other programs...
+  There are no globals (other than the optional debugging flag hss_verbose
+  and instrumentation code, such as hash_fault_*).  All memory is either a
+  buffer provided by the calling application, dynamically allocated (malloc),
+  or automatic (stack).  Globals are evil, reentrancy is good.  The regression
+  code does have globals (for things like coordinating with the randomness
+  generator; no normal program has any need for that); the regression code
+  isn't intended for use for other programs...
 
 - Use of floating point
-  Crypto code hardly ever uses floating point.  However, we're an exception;
-  in the hss_generate.c function, we do actually do some float point
-  computations; we do this to figure out a reasonable way to split the
-  building task between threads (and for this task, the imprecision inherent
-  in floating point is not a problem; if two ways of splitting the task are
-  so close in cost that the rounding error actually makes a difference, it
-  doesn't really matter which way we go).  Now, we include a macro
-  (DO_FLOATING_POINT) which disables the use of floating point; a platform
-  that does not support floating point can set it to 0, and that code is
-  commented out.  Now, if you use threading, you really want DO_FLOATING_POINT
-  If you don't, it doesn't matter for performance, and actually, turing it off
-  comments out quite a bit of code that you doesn't actually buy you anything;
-  it doesn't matter how we divide tasks between threads if the same thread
-  will end up performing them all anyways...
+  Crypto code hardly ever uses floating point (except perhaps to speed up
+  integer multiplication).  However, we're an exception; in the hss_generate.c
+  function, we do actually do some float point computations; we do this to
+  figure out a reasonable way to split the building task between threads (and
+  for this task, the imprecision inherent in floating point is not a problem;
+  if two ways of splitting the task are so close in cost that the rounding
+  error actually makes a difference, it doesn't really matter which way we
+  go).  Now, we include a macro (DO_FLOATING_POINT) which disables the use of
+  floating point; a platform that does not support floating point can set it
+  to 0, and that code is commented out.  Now, if you use threading, you really
+  want DO_FLOATING_POINT If you don't, it doesn't matter for performance, and
+  actually, turing it off comments out quite a bit of code that you doesn't
+  actually buy you anything; it doesn't matter how we divide tasks between
+  threads if the same thread will end up performing them all anyways...
   We also use floating point in the regression code; to figure out when to
   update the displayed % completed.
 
 - Debugging
   Good luck...
 
+- Instrumentation
+  config.h has a TEST_INSTRUMENTATION flag; if turned on, this enables some
+  additional test infrastructure that allows us to test various error
+  conditions.  This instrumentation should never be enabled in release code;
+  it does allow the regression tests to check out some corner cases.
+  Currently, the instrumentation code enables two things.
+  - It enables malloc checking; it does some simple checks of the malloc's
+    and free's (making sure we don't assume a zero malloc buffer, checking
+    for free'ing correctness (e.g. no double free's), buffer
+    overwrites/underwrites, and memory leaks.  The API we use internally
+    is in hss_malloc.h; if TEST_INSTRUMENTATION is off, hss_malloc and
+    hss_free calls are directly translated into malloc and free.
+  - It allows us to inject hash failures; that is, at a controllable time, our
+    code can miscompute a hash.  Obviously this need not be in a release
+    version; it is useful if we want to double-check whether our
+    fault-hardening code is working as advertised.  The API used is in
+    hss_fault.h, along with the global hss_fault_enabled.  The
+    hss_fault_enabled is the overall mode; with 0 being "never fault", 1 being
+    "fault at the specified time", and 2 being "always fault".  In the case of
+    hash_fault_enabled == 1, we characterize the hashes based on level (which
+    is the Merkle tree level within the HSS hierarchy, with 0 being the
+    topmost; 0 is used for hashes computed outslide the HSS hierarchy), and
+    hash_fault_reason being the reason we're doing the hash (and hss_fault.h
+    lists 9 different cateogiies).  We characterize hashes this way so that
+    test_fault.c can tareget specific hashes (and test failures across the
+    hierarchy).  In the code, we'll call hss_set_level(int) when we know we'll
+    be working at s specific HSS level (and mostly we don't pass the level to
+    the low level routines, so a higher level routine generally does the
+    call); when we know which hash we're doing, we'll call
+    hss_set_hash_reason.
+
 - Regression tests
   This package includes the test_hss executable, which is meant to be a set
   of regression tests for this package.  It ought to be run early and often
   (with "test_hss all" being a good default), if not in -full mode, it's
   relatively quick.
+  We've include the fault and the malloc tests; both run only if the
+  instrumentation code is enabled (as both rely on additional testing code not
+  in the release version); in addition, the fault test only if fault
+  protection is enabled (the test is designed to test the effectiveness of
+  fault protection, and it'll fail if it's not present).
+  If the instrumentation is on, we will (at the end of the tests) check to
+  see if there were any memory leaks (and if so, announce thar).
 
   The usage is:
       test_hss [-f] [-q] [-full] test_1 test_2 test_3
@@ -530,14 +704,16 @@ sources.
          On my test machine, 'test_hss all' currently takes about 70 seconds.
 
   Now, there are things that the regression tests currently don't test:
-  - Do we assume malloc gives us an initiallized buffer?
   - Do we handle malloc failures as designed?
   - How about thread spawn failures?  We're supposed to handle those
     transparently
-  - Do we have any memory leaks?
   - We're supposed to be able to limit the number of times we hash any
     specific secret; do we actually abide by that?
-  Testing those would require more infrastructure than we have right now.
+  - We're supposed to zeroize anything that would allow a forgery before
+    freeing it; do we do so?
+  Testing those would require more infrastructure than we have right now
+  (although inserting those based on the TEST_INSTRUMENTATION flag would
+  be the obvious place to start).
   Also, it might not be that bad of an idea to run a code-coverage tool to
   check out how much of the code the regression tests actually tests.
 
@@ -547,6 +723,8 @@ sources.
 
   common_defs.h		This is a central spot to put definitions of general
 			interest of the entire subsystem
+  config.h              Common file that contains configurable options that
+                        the user may wish to tweak
   demo.c		This is an example program that uses this subsystem; it
 			implements a simple file signer.  Note: because it
 			doesn't get that great of randomness (due to the need
@@ -589,6 +767,13 @@ sources.
   hss_derive.[ch]	This is the structure that does key derivation.  It
 			allows a trade-off between efficiency, and side channel
 			resistance.
+  hss_fault.h           This contains the interface to the fault error
+                        injection logic; that is, routines that various
+                        functions use to declare why they're doing a hash.
+                        This information allows the error injection logic
+                        to target a specific hash location (rather than making
+                        a random hash fail).  The actual code to do fault
+                        error injection is in hash.c
   hss_generate.c	This is the routine that takes an allocated working key
 			(hss_alloc.c), and loads a private key into it.  Sound
 			simple?  Well, if you go through this, you'll find out
@@ -597,6 +782,9 @@ sources.
 			to this subsystem, but shouldn't be used outside of it.
   hss_keygen.c		This is the routine that generates a public/private
 			keypair.
+  hss_malloc.[ch]	These are routines that do our instrumented checking
+			of malloc/free.  If instrumentation is turned off, calls
+			are directly routed to the standard malloc/free.
   hss_param.c		These are routines that deal with parameter sets.
   hss_reserve.[ch]	These are routines that deal with reservations, and
 			updating the sequence number in a private key.

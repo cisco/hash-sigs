@@ -37,12 +37,12 @@ static bool ignore_priv_key(unsigned char *priv_key, size_t len_priv_key, void *
 /* This is a function we use to pull in private keys, and record them */
 struct priv_key_reader {
     size_t length;
-    unsigned char priv_key[100];
+    unsigned char priv_key[HSS_MAX_PRIVATE_KEY_LEN];
 };
 static bool do_update_priv_key(unsigned char *priv_key, size_t len_priv_key, void *context) {
     struct priv_key_reader *p = context;
     p->length = len_priv_key;
-    if (len_priv_key > 100) return false;
+    if (len_priv_key > HSS_MAX_PRIVATE_KEY_LEN) return false;
     memcpy( p->priv_key, priv_key, len_priv_key);
     return true;
 }
@@ -276,6 +276,8 @@ bool test_keygen(bool fast_flag, bool quiet_flag) {
     {
         unsigned char pubkey[HSS_MAX_PUBLIC_KEY_LEN];
         unsigned char privkey[HSS_MAX_PRIVATE_KEY_LEN];
+        struct hss_extra_info info;
+        hss_init_extra_info( &info );
 
         /* Make sure that if we get the same priv key, whether we use an */
         /* update_private_key function, or if we don't */
@@ -283,8 +285,8 @@ bool test_keygen(bool fast_flag, bool quiet_flag) {
         if (!hss_generate_private_key( rand_1,
                      default_d, default_lm_type, default_ots_type,
                      NULL, privkey, pubkey, default_pubkey_size,
-                     NULL, 0, 0)) {
-            printf( "Huh, it worked last time???\n" );
+                     NULL, 0, &info)) {
+            printf( "Huh, it worked last time A %d\n", info.error_code );
             return false;
         }
         /* Writing the private key to an update function */
@@ -292,8 +294,8 @@ bool test_keygen(bool fast_flag, bool quiet_flag) {
         if (!hss_generate_private_key( rand_1,
                      default_d, default_lm_type, default_ots_type,
                      do_update_priv_key, &reader, pubkey, default_pubkey_size,
-                     NULL, 0, 0)) {
-            printf( "Huh, it worked last time???\n" );
+                     NULL, 0, &info)) {
+            printf( "Huh, it worked last time B %d\n", info.error_code );
             return false;
         }
 
@@ -305,8 +307,6 @@ bool test_keygen(bool fast_flag, bool quiet_flag) {
         }
 
         /* Make sure it fails if the update_priv_key function fails */
-        struct hss_extra_info info;
-        hss_init_extra_info( &info );
         if (hss_generate_private_key( rand_1,
                     default_d, default_lm_type, default_ots_type,
                     update_privkey_fail, NULL, pubkey, default_pubkey_size,
@@ -432,7 +432,7 @@ static bool gen_signature( unsigned char *privkey,
                unsigned char *sig, size_t sig_len,
                const unsigned char *pubkey) {
     /* Step 1: load the working key */
-    struct hss_working_key *w = hss_load_private_key(NULL, privkey,
+    struct hss_working_key *w = hss_load_private_key(NULL, NULL, privkey,
                        0, aux_data, aux_len, 0 );
     if (!w) {
         printf( "Error loading working key\n" );
@@ -441,7 +441,7 @@ static bool gen_signature( unsigned char *privkey,
 
     /* Step 2: use the working key to sign a message */
     static const unsigned char message[3] = "bcd";
-    bool success = hss_generate_signature( w, NULL, privkey,
+    bool success = hss_generate_signature( w,
                   message, sizeof message,
                   sig, sig_len, 0 );
     if (!success) {

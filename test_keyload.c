@@ -44,6 +44,8 @@ static bool generate_random(void *output, size_t length) {
     return true;
 }
 
+static void *private_key_pointer;
+
 bool test_key_load(bool fast_flag, bool quiet_flag) {
     bool success_flag = false;
     param_set_t parm_set[3] = { PARM_SET, PARM_SET, PARM_SET };
@@ -65,19 +67,31 @@ bool test_key_load(bool fast_flag, bool quiet_flag) {
     unsigned char aux_data[2000];
 
     /* Generate the master private key that we'll use for everyone */
+    private_key_pointer = private_key;
+    unsigned char master_private_key[ HSS_MAX_PRIVATE_KEY_LEN ];
     if (!hss_generate_private_key( generate_random, 
                       LEVELS, parm_set, ots_parm_set,
-                      NULL, private_key,
+                      NULL, master_private_key,
                       public_key, len_public_key,
                       aux_data, sizeof aux_data, 0)) {
         printf( "Public/private key gen failed\n" );
         return false;
     }
+    private_key_pointer = NULL;
 
     int i;
 
     struct hss_working_key *w[ MAX_ITER+1 ];
-    for (i = 0; i <= MAX_ITER; i++) w[i] = 0;
+    unsigned char *priv_key[ MAX_ITER+1 ];
+    for (i = 0; i <= MAX_ITER; i++) { w[i] = 0; priv_key[i] = 0; }
+
+    struct hss_working_key *master_w = hss_load_private_key(
+                            0, 0, master_private_key,
+                            0, aux_data, sizeof aux_data, 0);
+    if (!master_w) {
+        printf( "Master load failed\n" );
+        return false;
+    }
 
     unsigned iter;
     if (fast_flag) iter = FAST_ITER; else iter = MAX_ITER;
@@ -112,11 +126,22 @@ if (len_signature == 0) return false;
             /* a tree-walking bug */
         size_t memory_target = (i % 7 == 5) ? 0 : 30000;
 
-        /* Create a fresh working set at the current index*/
-        w[i] = hss_load_private_key( NULL, private_key, 
+        /* Create a fresh working set at the current index */
+        /* Of course, in practice, we should *never* copy the private keys */
+        /* around like this */
+        private_key_pointer = private_key;
+        int private_key_len = hss_get_private_key_len(LEVELS,
+                                                 parm_set, ots_parm_set);
+        priv_key[i] = malloc( private_key_len );
+        if (!priv_key[i]) { printf( "Out of memory\n" ); goto failed; }
+        memcpy( priv_key[i], master_private_key, private_key_len );
+
+        struct hss_extra_info info = { 0 };
+        w[i] = hss_load_private_key( 0, 0, priv_key[i],
                 memory_target,
-                (i % 3 == 1) ? NULL : aux_data, sizeof aux_data, 0 );
-        if (!w[i]) { printf( "Out of memory\n" ); goto failed; }
+                (i % 3 == 1) ? NULL : aux_data, sizeof aux_data, &info );
+        private_key_pointer = NULL;
+        if (!w[i]) { printf( "load error %d at step %d\n", (int)info.error_code, i ); goto failed; }
 
         memcpy( orig_private_key, private_key, len_private_key );
 
@@ -124,12 +149,17 @@ if (len_signature == 0) return false;
         char text[ 100 ];
         unsigned len_text = sprintf( text, "Message #%d", i );
 
-        if (!hss_generate_signature( w[0], NULL, private_key,
+        /* Generate a signature from the master key.  This has the side */
+        /* effect of incrementing the master private key */
+        private_key_pointer = private_key;
+        if (!hss_generate_signature( master_w,
                 text, len_text,
                 signature, len_signature, 0)) {
             printf( "\nMaster generate signature failed\n" );
             goto failed;
         }
+        private_key_pointer = NULL;
+
         /* If we're doing a regression test, we really have to actually */
         /* check the signatures, even if it's not the point of the test */
         if (!hss_validate_signature( public_key, text,
@@ -141,15 +171,17 @@ if (len_signature == 0) return false;
         /* Now, go through and see if all the other working keys generate */
         /* the same signature */
         int j;
-        for (j=1; j<=i; j++) {
+        for (j=0; j<=i; j++) {
             memcpy( copy_private_key, orig_private_key, len_private_key );
 
-            if (!hss_generate_signature( w[j], NULL, copy_private_key,
+            private_key_pointer = copy_private_key;
+            if (!hss_generate_signature( w[j],
                 text, len_text,
                 copy_signature, len_signature, 0)) {
                 printf( "\nGenerate signature %d failed\n", j );
                 goto failed;
             }
+            private_key_pointer = NULL;
 
             /* The signature and the private key should be the same as */
             /* the master */
@@ -173,6 +205,9 @@ failed:
     free(signature);
     free(copy_signature);
     for (i = 0; i <= MAX_ITER; i++) hss_free_working_key(w[i]);
+    for (i = 0; i <= MAX_ITER; i++) free(priv_key[i]);
+    hss_free_working_key(master_w);
+    private_key_pointer = NULL;
 
     return success_flag;
 }

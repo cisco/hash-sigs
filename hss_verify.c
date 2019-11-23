@@ -13,6 +13,7 @@
 #include "hss_thread.h"
 #include "hss_internal.h"
 #include "hss.h"
+#include "hss_fault.h"
 
 /* The HSS public key consists of: */
 /* Number of levels (1-8) (4 bytes) */
@@ -29,6 +30,8 @@
 void validate_internal_sig(const void *data,
                                struct thread_collection *col) {
     const struct verify_detail *d = data;
+
+    hss_set_level( d->tree_level );
 
     bool success = lm_validate_signature(d->public_key,
                                          d->message, d->message_len, false,
@@ -88,7 +91,11 @@ bool hss_validate_signature(
     /* key to use to validate the top level signature */
     public_key += 4;
 
-    struct thread_collection *col = hss_thread_init(info->num_threads);
+    /* Note: if we're verifying a 1-level tree, there really is no point */
+    /* to multithreading */
+    int num_threads = (levels == 1) ? 1 : info->num_threads;
+
+    struct thread_collection *col = hss_thread_init(num_threads);
     enum hss_error_code got_error = hss_error_none;
     struct verify_detail detail;
     detail.got_error = &got_error;
@@ -153,6 +160,7 @@ bool hss_validate_signature(
         detail.message_len = l_pubkeylen;
         detail.signature = l_sig;          /* Signature A */
         detail.signature_len = l_siglen;
+        detail.tree_level = i;
         hss_thread_issue_work( col, validate_internal_sig,
                                &detail, sizeof detail );
 
@@ -179,6 +187,7 @@ bool hss_validate_signature(
     detail.message_len = message_len;  /* validation */
     detail.signature = signature;      /* Bottom level LMS signature */
     detail.signature_len = signature_len;
+    detail.tree_level = levels-1;
     hss_thread_issue_work( col, validate_internal_sig,
                            &detail, sizeof detail );
 
