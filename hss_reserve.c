@@ -52,15 +52,17 @@ bool hss_advance_count(struct hss_working_key *w, sequence_t cur_count,
         *trash_private_key = true;  /* We can't trash our copy of the */
                 /* private key until after we've generated the signature */
                 /* We can trash the copy in secure storage, though */
+        int h0_len = w->tree[0]->hash_size;
         if (update_private_key) {
-            unsigned char private_key[PRIVATE_KEY_LEN];
-            memset( private_key, PARM_SET_END, PRIVATE_KEY_LEN );
-            if (!update_private_key(private_key, PRIVATE_KEY_LEN, context)) {
+            unsigned char private_key[PRIVATE_KEY_LEN(MAX_SEED_LEN)];
+            memset( private_key, PARM_SET_END, PRIVATE_KEY_LEN(MAX_SEED_LEN) );
+            if (!update_private_key(private_key, PRIVATE_KEY_LEN(h0_len),
+                                                                 context)) {
                 info->error_code = hss_error_private_key_write_failed;
                 return false;
             }
         } else {
-            memset( context, PARM_SET_END, PRIVATE_KEY_LEN );
+            memset( context, PARM_SET_END, PRIVATE_KEY_LEN(h0_len) );
         }
         return true;
     }
@@ -139,7 +141,8 @@ bool hss_reserve_signature(
      * reason we shouldn't support it
      */
     if (!update_private_key) {
-        if (0 != memcmp( context, w->private_key, PRIVATE_KEY_LEN)) {
+        int h0_len = w->tree[0]->hash_size;
+        if (0 != memcmp( context, w->private_key, PRIVATE_KEY_LEN(h0_len))) {
             info->error_code = hss_error_key_mismatch;
             return false;   /* Private key mismatch */
         }

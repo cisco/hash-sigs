@@ -15,6 +15,7 @@
 #include "hss_derive.h"
 #include "config.h"
 #include "lm_ots_common.h"
+#include "lm_common.h"
 
 /*
  * Allocate and load an ephemeral key
@@ -68,10 +69,11 @@ bool hss_generate_root_seed_I_value(unsigned char *seed, unsigned char *I,
                                     const unsigned char *master_seed,
                                     param_set_t lm, param_set_t ots) {
 #if SECRET_METHOD == 2
+    size_t seed_len = hss_seed_size(lm);
     /* In ACVP mode, we use the master seed as the source for both the */
     /* root seed, and the root I value */
-    memcpy( seed, master_seed, SEED_LEN );
-    memcpy( I, master_seed + SEED_LEN, I_LEN );
+    memcpy( seed, master_seed, seed_len );
+    memcpy( I, master_seed + seed_len, I_LEN );
 #else
     /*
      * We use a two-level hashing scheme so that we end up using the master
@@ -117,6 +119,22 @@ bool hss_generate_root_seed_I_value(unsigned char *seed, unsigned char *I,
 }
 
 /*
+ * This returns the size of the seed we use for a Merkle tree level that
+ * uses the specified parameter set
+ */
+size_t hss_seed_size(param_set_t lm) {
+#if SECRET_METHOD == 2
+    unsigned m;   /* Length of the seed depends on the hash function that LM uses */
+    if (!lm_look_up_parameter_set( lm, 0, &m, 0 )) {
+        return 0;
+    }
+    return m;
+#else
+    return SEED_LEN; /* We always use the same length seed */
+#endif
+}
+
+/*
  * Internal function to generate the child I value (based on the parent's
  * I value).  While this needs to be determanistic (so that we can create the
  * same I values between reboots), there's no requirement for interoperability.
@@ -124,12 +142,14 @@ bool hss_generate_root_seed_I_value(unsigned char *seed, unsigned char *I,
  * we needn't update this.
  */
 bool hss_generate_child_seed_I_value( unsigned char *seed, unsigned char *I,
-                   const unsigned char *parent_seed,
+                   const unsigned char *parent_seed, size_t parent_seed_len,
                    const unsigned char *parent_I,
+                   size_t child_seed_len,
                    merkle_index_t index,
                    param_set_t lm, param_set_t ots) {
     struct seed_derive derive;
-    if (!hss_seed_derive_init( &derive, lm, ots, parent_I, parent_seed )) {
+    if (!hss_seed_derive_init( &derive, lm, ots, parent_I, parent_seed,
+                               parent_seed_len )) {
         return false;
     }
 
@@ -137,14 +157,12 @@ bool hss_generate_child_seed_I_value( unsigned char *seed, unsigned char *I,
 
     /* Compute the child seed value */
     hss_seed_derive_set_j( &derive, SEED_CHILD_SEED );
-    hss_seed_derive( seed, &derive, true );
+    hss_seed_derive( seed, child_seed_len, &derive, true );
         /* True sets the j value to SEED_CHILD_I */
 
     /* Compute the child I value; with increment_j set to true in the */ 
     /* above call, derive has been set to the SEED_CHILD_I position */
-    unsigned char postimage[ SEED_LEN ];
-    hss_seed_derive( postimage, &derive, false );
-    memcpy( I, postimage, I_LEN );
+    hss_seed_derive( I, I_LEN, &derive, false );
 
     hss_seed_derive_done( &derive );
 

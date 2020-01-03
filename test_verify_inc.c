@@ -55,184 +55,191 @@ static bool do_validate( void *public_key,
     return success;
 }
 
-#define MAX_D 4
-bool test_verify_inc(bool fast_flag, bool quiet_flag) {
+static bool do_test(bool fast_flag, int max_d,
+                param_set_t *lm_array, param_set_t *lm_ots_array) {
     int d;
-    param_set_t lm_array[MAX_D] = { LMS_SHA256_N32_H10, LMS_SHA256_N32_H5,
-                                    LMS_SHA256_N32_H5, LMS_SHA256_N32_H5 };
-    param_set_t lm_ots_array[MAX_D] = {
-                  LMOTS_SHA256_N32_W4, LMOTS_SHA256_N32_W4,
-                  LMOTS_SHA256_N32_W4, LMOTS_SHA256_N32_W4 };
-
-    for (d=1; d<=MAX_D; d++) {
-    size_t len_private_key = hss_get_private_key_len(d, lm_array, lm_ots_array );
-    if (len_private_key == 0 || len_private_key > HSS_MAX_PRIVATE_KEY_LEN) { 
-        printf( "    Len private key failed\n" );
-        return false;
-    }
-    unsigned char private_key[HSS_MAX_PRIVATE_KEY_LEN];
-
-    unsigned len_public_key = hss_get_public_key_len(d, lm_array, lm_ots_array );
-    if (len_public_key == 0) { 
-        printf( "    Len public key failed\n" );
-        return false;
-    }
-
-    size_t len_signature = hss_get_signature_len(d, lm_array, lm_ots_array );
-    if (len_signature == 0) { 
-        printf( "    Len signature failed\n" );
-        return false;
-    }
-
-    unsigned char public_key[HSS_MAX_PUBLIC_KEY_LEN];
-
-    unsigned char aux_data[1000];
+    for (d=1; d<=max_d; d++) {
+        size_t len_private_key = hss_get_private_key_len(d, lm_array, lm_ots_array );
+        if (len_private_key == 0 || len_private_key > HSS_MAX_PRIVATE_KEY_LEN) { 
+            printf( "    Len private key failed\n" );
+            return false;
+        }
+        unsigned char private_key[HSS_MAX_PRIVATE_KEY_LEN];
     
-    /* Generate the public key */
-    if (!hss_generate_private_key(
-                generate_random,
-                d, lm_array, lm_ots_array,
-                NULL, private_key,
-                public_key, len_public_key,
-                aux_data, sizeof aux_data, 0 )) {
-        printf( "    Gen private key failed\n" );
-        return false;
-    }
-
-    /* Load the private key into memory */
-    struct hss_working_key *w = hss_load_private_key(
-                           NULL, private_key,
-                           0,     /* Minimal memory */
-                           aux_data, sizeof aux_data, 0 );
-    if (!w) {
-        printf( "    *** failed loading private key\n" );
-        return false;
-    }
-
-    unsigned char *signature = malloc(len_signature);
-    if (!signature) {
-        printf( "    *** malloc failure\n" );
-        return false;
-    }
-
-    /*
-     * Try correct validations, at various step levels
-     */
-    int step;
-    for (step = 1; step < 70; step++) {
-        /* Generate a valid signature */
-        static unsigned char test_message[] =
-          "The powers not delegated to the United States by the Constitution, "
-          "nor prohibited by it to the States, are reserved to the States "
-          "respectively, or to the people";
-  
+        unsigned len_public_key = hss_get_public_key_len(d, lm_array, lm_ots_array );
+        if (len_public_key == 0 || len_public_key > HSS_MAX_PUBLIC_KEY_LEN) { 
+            printf( "    Len public key failed\n" );
+            return false;
+        }
+    
+        size_t len_signature = hss_get_signature_len(d, lm_array, lm_ots_array );
+        if (len_signature == 0) { 
+            printf( "    Len signature failed\n" );
+            return false;
+        }
+    
+        unsigned char public_key[HSS_MAX_PUBLIC_KEY_LEN];
+    
+        unsigned char aux_data[1000];
+        
+        /* Generate the public key */
+        if (!hss_generate_private_key(
+                    generate_random,
+                    d, lm_array, lm_ots_array,
+                    NULL, private_key,
+                    public_key, len_public_key,
+                    aux_data, sizeof aux_data, 0 )) {
+            printf( "    Gen private key failed\n" );
+            return false;
+        }
+    
+        /* Load the private key into memory */
+        struct hss_working_key *w = hss_load_private_key(
+                               NULL, private_key,
+                               0,     /* Minimal memory */
+                               aux_data, sizeof aux_data, 0 );
+        if (!w) {
+            printf( "    *** failed loading private key\n" );
+            return false;
+        }
+    
+        unsigned char signature[len_signature];
+        /*
+         * Try correct validations, at various step levels
+         */
+        int step;
+        for (step = 1; step < 70; step++) {
+            /* Generate a valid signature */
+            static unsigned char test_message[] =
+              "The powers not delegated to the United States by the Constitution, "
+              "nor prohibited by it to the States, are reserved to the States "
+              "respectively, or to the people";
+      
+            if (!hss_generate_signature( w, NULL, private_key,
+                                     test_message, sizeof test_message,
+                                     signature, len_signature, 0 )) {
+                printf( "    *** failed signing test message\n" );
+                hss_free_working_key(w);
+                return false;
+            }
+    
+            if (!do_validate( public_key,
+                              test_message, sizeof test_message,
+                              signature, len_signature, step, 0 )) {
+                printf( "    *** failed valid signature\n" );
+                hss_free_working_key(w);
+                return false;
+            }
+        }
+    
+        /* Try validating the wrong message (and reuse the signature we */
+        /* generated above) */
+        unsigned char wrong_message[] = "Wrong message";
+        enum hss_error_code error;
+        if (do_validate( public_key,
+                              wrong_message, sizeof wrong_message,
+                              signature, len_signature, 7, &error )) {
+            printf( "    *** incorrect message validated\n" );
+            hss_free_working_key(w);
+            return false;
+        }
+        if (error != hss_error_bad_signature) {
+            printf( "    *** incorrect error code\n" );
+            hss_free_working_key(w);
+            return false;
+        }
+    
+        /* Corrupt the signature; check if we detect that */
+        int i;
+        unsigned char test_message[] =  "The powers ...";
+      
         if (!hss_generate_signature( w, NULL, private_key,
-                                 test_message, sizeof test_message,
-                                 signature, len_signature, 0 )) {
+                                     test_message, sizeof test_message,
+                                     signature, len_signature, 0 )) {
             printf( "    *** failed signing test message\n" );
             hss_free_working_key(w);
-            free(signature);
             return false;
         }
-
-        if (!do_validate( public_key,
-                          test_message, sizeof test_message,
-                          signature, len_signature, step, 0 )) {
-            printf( "    *** failed valid signature\n" );
+        int count = 0;
+        for (i=0; i<len_signature; i++) {
+            int b;
+                /* In fast mode, check every fifth bit */
+            if (fast_flag) {
+                count++; if (count != 5) continue; count = 0;
+            }
+            for (b = 0x01; b < 0x100; b <<= 1) {
+                signature[i] ^= b;
+                enum hss_error_code error;
+                if (do_validate( public_key,
+                              test_message, sizeof test_message,
+                              signature, len_signature, sizeof test_message, 
+                              &error )) {
+                    printf( "    *** incorrect signature validated\n" );
+                    hss_free_working_key(w);
+                    return false;
+                }
+                if (error != hss_error_bad_signature) {
+                    printf( "    *** incorrect error code\n" );
+                    hss_free_working_key(w);
+                    return false;
+                }
+                signature[i] ^= b;
+            }
+        }
+            /* Check a too-short signature */
+        if (do_validate( public_key,
+                              test_message, sizeof test_message,
+                              signature, len_signature - 1, sizeof test_message,
+                              &error)) {
+            printf( "    *** incorrect signature validated\n" );
             hss_free_working_key(w);
-            free(signature);
             return false;
         }
-    }
-
-    /* Try validating the wrong message (and reuse the signature we */
-    /* generated above) */
-    unsigned char wrong_message[] = "Wrong message";
-    enum hss_error_code error;
-    if (do_validate( public_key,
-                          wrong_message, sizeof wrong_message,
-                          signature, len_signature, 7, &error )) {
-        printf( "    *** incorrect message validated\n" );
-        hss_free_working_key(w);
-        free(signature);
-        return false;
-    }
-    if (error != hss_error_bad_signature) {
-        printf( "    *** incorrect error code\n" );
-        hss_free_working_key(w);
-        free(signature);
-        return false;
-    }
-
-    /* Corrupt the signature; check if we detect that */
-    int i;
-    unsigned char test_message[] =  "The powers ...";
-  
-    if (!hss_generate_signature( w, NULL, private_key,
-                                 test_message, sizeof test_message,
-                                 signature, len_signature, 0 )) {
-        printf( "    *** failed signing test message\n" );
-        hss_free_working_key(w);
-        free(signature);
-        return false;
-    }
-    int count = 0;
-    for (i=0; i<len_signature; i++) {
-        int b;
-            /* In fast mode, check every fifth bit */
-        if (fast_flag) {
-            count++; if (count != 5) continue; count = 0;
+        if (error != hss_error_bad_signature) {
+            printf( "    *** incorrect error code\n" );
+            hss_free_working_key(w);
+            return false;
         }
-        for (b = 0x01; b < 0x100; b <<= 1) {
-            signature[i] ^= b;
-            enum hss_error_code error;
-            if (do_validate( public_key,
-                          test_message, sizeof test_message,
-                          signature, len_signature, sizeof test_message, 
-                          &error )) {
-                printf( "    *** incorrect signature validated\n" );
-                hss_free_working_key(w);
-                free(signature);
-                return false;
-            }
-            if (error != hss_error_bad_signature) {
-                printf( "    *** incorrect error code\n" );
-                hss_free_working_key(w);
-                free(signature);
-                return false;
-            }
-            signature[i] ^= b;
+    
+            /* And double check that the correct signature passes */
+        if (!do_validate( public_key,
+                              test_message, sizeof test_message,
+                              signature, len_signature, sizeof test_message, 0 )) {
+            printf( "    *** error in test\n" );
+            hss_free_working_key(w);
+            return false;
         }
-    }
-        /* Check a too-short signature */
-    if (do_validate( public_key,
-                          test_message, sizeof test_message,
-                          signature, len_signature - 1, sizeof test_message,
-                          &error)) {
-        printf( "    *** incorrect signature validated\n" );
+    
         hss_free_working_key(w);
-        free(signature);
-        return false;
-    }
-    if (error != hss_error_bad_signature) {
-        printf( "    *** incorrect error code\n" );
-        hss_free_working_key(w);
-        free(signature);
-        return false;
     }
 
-        /* And double check that the correct signature passes */
-    if (!do_validate( public_key,
-                          test_message, sizeof test_message,
-                          signature, len_signature, sizeof test_message, 0 )) {
-        printf( "    *** error in test\n" );
-        hss_free_working_key(w);
-        free(signature);
-        return false;
+    return true;
+}
+
+#define MAX_D 4
+bool test_verify_inc(bool fast_flag, bool quiet_flag) {
+    int max_d = fast_flag ? 3 : MAX_D;
+
+    {
+        static param_set_t lm_array[MAX_D] = {
+                                    LMS_SHA256_N24_H10, LMS_SHA256_N24_H5,
+                                    LMS_SHA256_N24_H5, LMS_SHA256_N24_H5 };
+        static param_set_t lm_ots_array[MAX_D] = {
+                  LMOTS_SHA256_N24_W4, LMOTS_SHA256_N24_W4,
+                  LMOTS_SHA256_N24_W4, LMOTS_SHA256_N24_W4 };
+        if (!do_test( fast_flag, max_d, lm_array, lm_ots_array))
+            return false;
     }
 
-    hss_free_working_key(w);
-    free(signature);
+    if (!fast_flag) {
+        static param_set_t lm_array[MAX_D] = {
+                                    LMS_SHA256_N32_H10, LMS_SHA256_N32_H5,
+                                    LMS_SHA256_N32_H5, LMS_SHA256_N32_H5 };
+        static param_set_t lm_ots_array[MAX_D] = {
+                  LMOTS_SHA256_N32_W4, LMOTS_SHA256_N32_W4,
+                  LMOTS_SHA256_N32_W4, LMOTS_SHA256_N32_W4 };
+        if (!do_test( fast_flag, max_d, lm_array, lm_ots_array))
+            return false;
     }
 
     return true;

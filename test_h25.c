@@ -32,7 +32,9 @@ static bool rand_1(void *output, size_t len) {
 bool test_h25(bool fast_flag, bool quiet_flag) {
     unsigned d = 2;
     param_set_t lm_type[2] = { LMS_SHA256_N32_H25, LMS_SHA256_N32_H25 };
-    param_set_t ots_type[2] = { LMOTS_SHA256_N32_W2, LMOTS_SHA256_N32_W2 };
+        /* Using the 192 bit parm set on the OTS makes the test go faster */
+        /* (and the test takes long enough as it is) */
+    param_set_t ots_type[2] = { LMOTS_SHA256_N24_W2, LMOTS_SHA256_N24_W2 };
 
     /* Simplest test possible */
     int pubkey_size = hss_get_public_key_len( d, lm_type, ots_type );

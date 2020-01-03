@@ -61,7 +61,8 @@ const char *default_parm_set = "20/8,10/8";
 
 static const char *seedbits = 0;
 static const char *i_value = 0;
-static bool convert_specified_seed_i_value( void *, size_t );
+static size_t upper_hash_size;
+static bool convert_specified_seed_i_value( void *, size_t, size_t );
 
 /*
  * The HSS routines assume 3 user provided routines; here are the ones
@@ -80,7 +81,7 @@ bool do_rand( void *output, size_t len ) {
         /* The seed was specified on the command line */
         /* Return that exact seed and i */
         /* This is not something a real application should do */
-        return convert_specified_seed_i_value( output, len );
+        return convert_specified_seed_i_value( output, len, upper_hash_size );
     }
     struct {
         unsigned char dev_random_output[32];
@@ -251,13 +252,14 @@ static int fromhex(char c) {
  * This converts what the user specified into the format that
  * the library expects
  */
-static bool convert_specified_seed_i_value( void *buffer, size_t len) {
+static bool convert_specified_seed_i_value( void *buffer, size_t len,
+                                            size_t upper_hash_size) {
     int i;
     const char *in = seedbits; 
     unsigned char *out = buffer;
     for (i=0; i<len; i++) {
-        /* After 32 bytes of seed, then comes the i value */
-        if (i == 32) {
+        /* After upper_hash_size bytes of seed, then comes the i value */
+        if (i == upper_hash_size) {
             in = i_value;
         }
         int c = fromhex(*in); if (*in) in++;
@@ -270,7 +272,7 @@ static bool convert_specified_seed_i_value( void *buffer, size_t len) {
 
 static int parse_parm_set(int *levels, param_set_t *lm_array,
                            param_set_t *ots_array, size_t *aux_size,
-                           const char *parm_set);
+                           const char *parm_set, size_t *upper_hash_size);
 static void list_parameter_set(int levels, const param_set_t *lm_array,
                            const param_set_t *ots_array, size_t aux_size );
 
@@ -294,7 +296,8 @@ static int keygen(const char *keyname, const char *parm_set) {
     param_set_t ots_array[ MAX_HSS_LEVELS ];
     size_t aux_size;
     if (!parm_set) parm_set = default_parm_set;
-    if (!parse_parm_set( &levels, lm_array, ots_array, &aux_size, parm_set)) {
+    if (!parse_parm_set( &levels, lm_array, ots_array, &aux_size, parm_set,
+                         &upper_hash_size)) {
         return 0;
     }
 
@@ -767,6 +770,31 @@ static int get_integer(const char **p) {
     return n;
 }
 
+static int check_string( const char **p, const char *s ) {
+    int i;
+    for (i=0; s[i]; i++) {
+        if ((*p)[i] != s[i]) {
+            return 0;
+        }
+    }
+    *p += i;
+    return 1;
+}
+
+#include <stdarg.h>
+static param_set_t pick( int hash_type, ... ) {
+    va_list ap;
+
+    va_start(ap, hash_type);
+    int i;
+    param_set_t val = 0;
+    for (i=0; i<=hash_type; i++) {
+        val = va_arg( ap, param_set_t );
+    }
+    va_end(ap);
+    return val;
+}
+
 /*
  * This parses the parameter set; this is provided so we can try different
  * sets without recompiling the program each time.  This is placed here
@@ -775,9 +803,25 @@ static int get_integer(const char **p) {
  */
 static int parse_parm_set( int *levels, param_set_t *lm_array,
                            param_set_t *ots_array, size_t *aux_size,
-                           const char *parm_set) {
+                           const char *parm_set, size_t *upper_hash_size) {
     int i;
     size_t aux = DEFAULT_AUX_DATA;
+
+    int hash_type = 0;  /* 1 -> 192 bit SHA256, 0 -> 256 bit SHA256 */
+
+    /* Get the hash function.  Now, HSS doesn't require us to use the same */
+    /* hash function everywhere, however allowing different hash functions */
+    /* at different places makes the parse strings ugly, and there's no */
+    /* specific reason to actually use it */
+    if (check_string( &parm_set, "SHA192," )) {
+        hash_type = 1;
+    } else {
+        /* Remove the initial SHA256, string, if present */
+        (void)check_string( &parm_set, "SHA256," );
+        hash_type = 0;
+    }
+    *upper_hash_size = pick( hash_type, 32, 24 );
+
     for (i=0;; i++) {
         if (i == 8) {
             printf( "Error: more than 8 HSS levels specified\n" );
@@ -787,26 +831,45 @@ static int parse_parm_set( int *levels, param_set_t *lm_array,
         int h = get_integer( &parm_set );
         param_set_t lm;
         switch (h) {
-        case 5:  lm = LMS_SHA256_N32_H5;  break;
-        case 10: lm = LMS_SHA256_N32_H10; break;
-        case 15: lm = LMS_SHA256_N32_H15; break;
-        case 20: lm = LMS_SHA256_N32_H20; break;
-        case 25: lm = LMS_SHA256_N32_H25; break;
+        case 5:  lm = pick( hash_type, LMS_SHA256_N32_H5,
+                                       LMS_SHA256_N24_H5 );
+                 break;
+        case 10: lm = pick( hash_type, LMS_SHA256_N32_H10,
+                                       LMS_SHA256_N24_H10 );
+                 break;
+        case 15: lm = pick( hash_type, LMS_SHA256_N32_H15,
+                                       LMS_SHA256_N24_H15 );
+                 break;
+        case 20: lm = pick( hash_type, LMS_SHA256_N32_H20,
+                                       LMS_SHA256_N24_H20 );
+                 break;
+        case 25: lm = pick( hash_type, LMS_SHA256_N32_H25,
+                                       LMS_SHA256_N24_H25 );
+                 break;
         case 0: printf( "Error: expected height of Merkle tree\n" ); return 0;
         default: printf( "Error: unsupported Merkle tree height %d\n", h );
                  printf( "Supported heights = 5, 10, 15, 20, 25\n" );
                  return 0;
         }
         /* Now see if we can get the Winternitz parameter */
-        param_set_t ots = LMOTS_SHA256_N32_W8;
+        param_set_t ots = pick( hash_type, LMOTS_SHA256_N32_W8,
+                                           LMOTS_SHA256_N24_W8 );
         if (*parm_set == '/') {
             parm_set++;
             int w = get_integer( &parm_set );
             switch (w) {
-            case 1: ots = LMOTS_SHA256_N32_W1; break;
-            case 2: ots = LMOTS_SHA256_N32_W2; break;
-            case 4: ots = LMOTS_SHA256_N32_W4; break;
-            case 8: ots = LMOTS_SHA256_N32_W8; break;
+            case 1: ots = pick( hash_type, LMOTS_SHA256_N32_W1,
+                                           LMOTS_SHA256_N24_W1 );
+                    break;
+            case 2: ots = pick( hash_type, LMOTS_SHA256_N32_W2,
+                                           LMOTS_SHA256_N24_W2 );
+                    break;
+            case 4: ots = pick( hash_type, LMOTS_SHA256_N32_W4,
+                                           LMOTS_SHA256_N24_W4 );
+                    break;
+            case 8: ots = pick( hash_type, LMOTS_SHA256_N32_W8,
+                                           LMOTS_SHA256_N24_W8 );
+                    break;
             case 0: printf( "Error: expected Winternitz parameter\n" ); return 0;
             default: printf( "Error: unsupported Winternitz parameter %d\n", w );
                      printf( "Supported parmaeters = 1, 2, 4, 8\n" );
@@ -832,29 +895,53 @@ static int parse_parm_set( int *levels, param_set_t *lm_array,
     return 1;
 }
 
+static const char *hash_name(int hash_type) {
+    switch (hash_type) {
+    case 0: return "SHA-256/192";
+    case 1: return "SHA-256";
+    default: return "???";
+    }
+}
+
 static void list_parameter_set(int levels, const param_set_t *lm_array,
                            const param_set_t *ots_array, size_t aux_size ) {
     printf( "Parameter set being used: there are %d levels of Merkle trees\n", levels );
     int i;
     for (i=0; i<levels; i++) {
-        printf( "Level %d: hash function = SHA-256; ", i );
         int h = 0;
+        int hash = 0;
         switch (lm_array[i]) {
-        case LMS_SHA256_N32_H5:  h = 5; break;
-        case LMS_SHA256_N32_H10: h = 10; break;
-        case LMS_SHA256_N32_H15: h = 15; break;
-        case LMS_SHA256_N32_H20: h = 20; break;
-        case LMS_SHA256_N32_H25: h = 25; break;
+        case LMS_SHA256_N32_H5:  h = 5;  hash = 1; break;
+        case LMS_SHA256_N32_H10: h = 10; hash = 1; break;
+        case LMS_SHA256_N32_H15: h = 15; hash = 1; break;
+        case LMS_SHA256_N32_H20: h = 20; hash = 1; break;
+        case LMS_SHA256_N32_H25: h = 25; hash = 1; break;
+        case LMS_SHA256_N24_H5:  h = 5;  hash = 0; break;
+        case LMS_SHA256_N24_H10: h = 10; hash = 0; break;
+        case LMS_SHA256_N24_H15: h = 15; hash = 0; break;
+        case LMS_SHA256_N24_H20: h = 20; hash = 0; break;
+        case LMS_SHA256_N24_H25: h = 25; hash = 0; break;
         }
+        printf( "Level %d: hash function = %s; ", i, hash_name(hash) );
         printf( "%d level Merkle tree; ", h );
         int w = 0;
+        int hash2 = 0;
         switch (ots_array[i]) {
-        case LMOTS_SHA256_N32_W1: w = 1; break;
-        case LMOTS_SHA256_N32_W2: w = 2; break;
-        case LMOTS_SHA256_N32_W4: w = 4; break;
-        case LMOTS_SHA256_N32_W8: w = 8; break;
+        case LMOTS_SHA256_N32_W1: w = 1; hash2 = 1; break;
+        case LMOTS_SHA256_N32_W2: w = 2; hash2 = 1; break;
+        case LMOTS_SHA256_N32_W4: w = 4; hash2 = 1; break;
+        case LMOTS_SHA256_N32_W8: w = 8; hash2 = 1; break;
+        case LMOTS_SHA256_N24_W1: w = 1; hash2 = 0; break;
+        case LMOTS_SHA256_N24_W2: w = 2; hash2 = 0; break;
+        case LMOTS_SHA256_N24_W4: w = 4; hash2 = 0; break;
+        case LMOTS_SHA256_N24_W8: w = 8; hash2 = 0; break;
         }
         printf( "Winternitz param %d\n", w );
+        if (hash != hash2) {
+            /* Our parsing code can't actually generate parmaeters with */
+            /* different Merkle/Winternitz hashes, but just in case */
+            printf( "/%s", hash_name(hash));
+        }
     }
     if (aux_size > 0) {
         printf( "Maximum of %lu bytes of aux data\n", (unsigned long)aux_size );

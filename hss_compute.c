@@ -58,7 +58,7 @@ static enum hss_error_code hss_compute_internal_node( unsigned char *dest,
 
     struct seed_derive derive;
     if (!hss_seed_derive_init( &derive, lm_type, lm_ots_type,
-                               I, seed)) {
+                               I, seed, hss_seed_size(lm_type))) {
         return hss_error_bad_param_set;
     }
 
@@ -87,7 +87,7 @@ static enum hss_error_code hss_compute_internal_node( unsigned char *dest,
         /* Hash it to form the leaf node */
         put_bigendian( pub_key + LEAF_R, r, 4);
         union hash_context ctx;
-        hss_hash_ctx( current_buf, h, &ctx, pub_key, LEAF_LEN(hash_size) );
+        hss_hash_ctx( current_buf, h, &ctx, pub_key, LEAF_LEN(ots_len) );
 
         /* Work up the stack, combining right nodes with the left nodes */
         /* that we've already computed */
