@@ -50,6 +50,21 @@ void hss_hash_ctx(void *result, int hash_type, union hash_context *ctx,
 #endif
         break;
     }
+    case HASH_SHA256_24: {
+        unsigned char temp[SHA256_LEN];
+        SHA256_Init(&ctx->sha256);
+        SHA256_Update(&ctx->sha256, message, message_len);
+        SHA256_Final(temp, &ctx->sha256);
+        memcpy(result, temp, 24 );
+        hss_zeroize(temp, sizeof temp);
+#if ALLOW_VERBOSE
+        if (hss_verbose) {
+            printf( " ->" );
+            int i; for (i=0; i<24; i++) printf( " %02x", ((unsigned char *)result)[i] ); printf( "\n" );
+        }
+#endif
+        break;
+    }
     }
 }
 
@@ -68,7 +83,7 @@ void hss_hash(void *result, int hash_type,
  */
 void hss_init_hash_context(int h, union hash_context *ctx) {
     switch (h) {
-    case HASH_SHA256:
+    case HASH_SHA256: case HASH_SHA256_24:
         SHA256_Init( &ctx->sha256 );
         break;
     }
@@ -82,7 +97,7 @@ void hss_update_hash_context(int h, union hash_context *ctx,
     }
 #endif
     switch (h) {
-    case HASH_SHA256:
+    case HASH_SHA256: case HASH_SHA256_24:
         SHA256_Update(&ctx->sha256, msg, len_msg);
         break;
     }
@@ -100,6 +115,20 @@ void hss_finalize_hash_context(int h, union hash_context *ctx, void *buffer) {
     }
 #endif
         break;
+    case HASH_SHA256_24: {
+        unsigned char temp[SHA256_LEN];
+        SHA256_Final(temp, &ctx->sha256);
+        memcpy(buffer, temp, 24);
+        hss_zeroize(temp, sizeof temp);
+#if ALLOW_VERBOSE
+    if (hss_verbose) {
+        printf( " -->" );
+        int i; for (i=0; i<24; i++) printf( " %02x", ((unsigned char*)buffer)[i] );
+        printf( "\n" );
+    }
+#endif
+        break;
+    }
     }
 }
 
@@ -107,13 +136,14 @@ void hss_finalize_hash_context(int h, union hash_context *ctx, void *buffer) {
 unsigned hss_hash_length(int hash_type) {
     switch (hash_type) {
     case HASH_SHA256: return 32;
+    case HASH_SHA256_24: return 24;
     }
     return 0;
 }
 
 unsigned hss_hash_blocksize(int hash_type) {
     switch (hash_type) {
-    case HASH_SHA256: return 64;
+    case HASH_SHA256: case HASH_SHA256_24:return 64;
     }
     return 0;
 }
