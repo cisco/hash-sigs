@@ -26,7 +26,7 @@
 #define MAX_HSS_LEVELS 8    /* Maximum levels we allow */
 
 /* This is the length of our internal seed values */
-#define SEED_LEN 32         /* Enough to make Grover's infeasible */
+#define MAX_SEED_LEN 32     /* Enough to make Grover's infeasible */
 
 /* Here are some internal types used within the code.  They are listed more */
 /* for documentation ("this is what this variable is expected to be") rather */
@@ -60,12 +60,23 @@ typedef uint_fast64_t sequence_t;
 #define LMS_SHA256_N32_H15 0x00000007
 #define LMS_SHA256_N32_H20 0x00000008
 #define LMS_SHA256_N32_H25 0x00000009
+#define LMS_SHA256_N24_H5  0xe0000001
+#define LMS_SHA256_N24_H10 0xe0000002
+#define LMS_SHA256_N24_H15 0xe0000003
+#define LMS_SHA256_N24_H20 0xe0000004
+#define LMS_SHA256_N24_H25 0xe0000005
+
 
 /* LM-OTS registry */
 #define LMOTS_SHA256_N32_W1 0x00000001
 #define LMOTS_SHA256_N32_W2 0x00000002
 #define LMOTS_SHA256_N32_W4 0x00000003
 #define LMOTS_SHA256_N32_W8 0x00000004
+#define LMOTS_SHA256_N24_W1 0xe0000001
+#define LMOTS_SHA256_N24_W2 0xe0000002
+#define LMOTS_SHA256_N24_W4 0xe0000003
+#define LMOTS_SHA256_N24_W8 0xe0000004
+
 
 /*
  * Internal formats of various hashes
