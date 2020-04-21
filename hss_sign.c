@@ -537,7 +537,6 @@ bool hss_generate_signature(
         struct merkle_level *tree = w->tree[levels-1];
         merkle_index_t updates_before_end = tree->max_index - tree->current_index + 1;
         int h_subtree = tree->subtree_size;
-        int i;
         for (i=1; i<tree->sublevels; i++) {
             struct subtree *subtree = tree->subtree[i][BUILDING_TREE];
                 /* Check if there is a building tree */
@@ -675,21 +674,15 @@ done_advancing:
         /* I or the parent's I_next value */
         merkle_index_t index = parent->current_index;
         if (index == parent->max_index) {
-            if (!hss_generate_child_seed_I_value(tree->seed_next, tree->I_next,
+            hss_generate_child_seed_I_value(tree->seed_next, tree->I_next,
                                        parent->seed_next, parent->I_next, 0,
                                        parent->lm_type,
-                                       parent->lm_ots_type)) {
-                info->error_code = hss_error_internal;
-                goto failed;
-            }
+                                       parent->lm_ots_type);
         } else {
-            if (!hss_generate_child_seed_I_value(tree->seed_next, tree->I_next,
+            hss_generate_child_seed_I_value( tree->seed_next, tree->I_next,
                                        parent->seed, parent->I, index+1,
                                        parent->lm_type,
-                                       parent->lm_ots_type)) {
-                info->error_code = hss_error_internal;
-                goto failed;
-            }
+                                       parent->lm_ots_type);
          }
 
          tree->current_index = 0;  /* We're starting this from scratch */

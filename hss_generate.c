@@ -326,12 +326,8 @@ bool hss_generate_working_key(
         /* Initialize the I, I_next elements */
         if (i == 0) {
             /* The root seed, I value is derived from the secret key */
-            if (!hss_generate_root_seed_I_value( tree->seed, tree->I,
-                                        private_key+PRIVATE_KEY_SEED,
-                                        tree->lm_type, tree->lm_ots_type )) {
-                info->error_code = hss_error_internal;
-                goto failed;
-            }
+            hss_generate_root_seed_I_value( tree->seed, tree->I,
+                                            private_key+PRIVATE_KEY_SEED );
             /* We don't use the I_next value */
         } else {
             /* The seed, I is derived from the parent's values */
@@ -340,33 +336,22 @@ bool hss_generate_working_key(
             struct merkle_level *parent = w->tree[i-1];
             merkle_index_t index = parent->current_index;
 
-            if (!hss_generate_child_seed_I_value( tree->seed, tree->I,
+            hss_generate_child_seed_I_value( tree->seed, tree->I,
                                              parent->seed,  parent->I,
                                              index, parent->lm_type,
-                                             parent->lm_ots_type )) {
-                info->error_code = hss_error_internal;
-                goto failed;
-            }
+                                             parent->lm_ots_type );
             /* The next seed, I is derived from either the parent's I */
             /* or the parent's next value */
             if (index == tree->max_index) {
-                if (!hss_generate_child_seed_I_value(
-                                            tree->seed_next, tree->I_next,
+                hss_generate_child_seed_I_value( tree->seed_next, tree->I_next,
                                             parent->seed_next,  parent->I_next,
                                             0, parent->lm_type, 
-                                            parent->lm_ots_type)) {
-                    info->error_code = hss_error_internal;
-                    goto failed;
-                }
+                                            parent->lm_ots_type);
             } else {
-                if (!hss_generate_child_seed_I_value(
-                                            tree->seed_next, tree->I_next,
+                hss_generate_child_seed_I_value( tree->seed_next, tree->I_next,
                                             parent->seed,  parent->I,
                                             index+1, parent->lm_type,
-                                            parent->lm_ots_type)) {
-                    info->error_code = hss_error_internal;
-                    goto failed;
-                }
+                                            parent->lm_ots_type);
             }
         }
     }
@@ -596,9 +581,10 @@ bool hss_generate_working_key(
             p_order->cost = 0;
             continue;
         }
-        unsigned w = 8;
+        unsigned winternitz = 8;
         unsigned p = 128;
-        (void)lm_ots_look_up_parameter_set(p_order->tree->lm_ots_type, 0, 0, &w, &p, 0);
+        (void)lm_ots_look_up_parameter_set(p_order->tree->lm_ots_type, 0, 0,
+                                           &winternitz, &p, 0);
 
         struct subtree *subtree = p_order->subtree;
         unsigned levels_below = subtree->levels_below;
@@ -611,7 +597,7 @@ bool hss_generate_working_key(
          */
         p_order->cost = (float)((merkle_index_t)1<<levels_below) *
                         (float)p *
-                        (float)(1<<w);
+                        (float)(1<<winternitz);
     }
 
     /*
