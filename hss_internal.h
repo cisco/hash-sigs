@@ -176,8 +176,7 @@ bool hss_compress_param_set( unsigned char *compressed,
 /* private seed).  We do this (rather than selecting them  at random) so */
 /* that we don't need to store them in our private key; we can recompute */
 bool hss_generate_root_seed_I_value(unsigned char *seed, unsigned char *I,
-                   const unsigned char *master_seed,
-                   param_set_t parent_lm, param_set_t parent_ots );
+                   const unsigned char *master_seed);
 
 /* Internal function to generate the seed, I value for a child Merkle tree */
 /* (based on the seed, I value of the parent.  We do this (rather than */

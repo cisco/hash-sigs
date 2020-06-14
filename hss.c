@@ -65,8 +65,7 @@ struct hss_working_key *hss_load_private_key(
  * we don't need to store it in our private key; we can recompute them
  */
 bool hss_generate_root_seed_I_value(unsigned char *seed, unsigned char *I,
-                                    const unsigned char *master_seed,
-                                    param_set_t lm, param_set_t ots) {
+                                    const unsigned char *master_seed) {
 #if SECRET_METHOD == 2
     /* In ACVP mode, we use the master seed as the source for both the */
     /* root seed, and the root I value */

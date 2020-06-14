@@ -1,0 +1,4 @@
+*.o
+*.a
+demo
+test_hss
