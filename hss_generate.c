@@ -231,9 +231,7 @@ static unsigned my_log2(float f) {
  *
  * It fills in an already allocated working key, based on the private key
  */
-bool hss_generate_working_key(
-    bool (*read_private_key)(unsigned char *private_key,
-            size_t len_private_key, void *context),
+bool hss_generate_working_key(unsigned char *private_key,
         void *context,
     const unsigned char *aux_data, size_t len_aux_data,  /* Optional */
     struct hss_working_key *w,
@@ -248,13 +246,13 @@ bool hss_generate_working_key(
     w->status = hss_error_key_uninitialized; /* In case we detect an */
                                              /* error midway */
 
-    if (!read_private_key && !context) {
+    /*if (!read_private_key && !context) {
         info->error_code = hss_error_no_private_buffer;
         return false;
     }
-
+*/
     /* Read the private key */
-    unsigned char private_key[ PRIVATE_KEY_LEN ];
+    /*unsigned char private_key[ PRIVATE_KEY_LEN ];
     if (read_private_key) {
         if (!read_private_key( private_key, PRIVATE_KEY_LEN, context)) {
             info->error_code = hss_error_private_key_read_failed;
@@ -262,7 +260,7 @@ bool hss_generate_working_key(
         }
     } else {
         memcpy( private_key, context, PRIVATE_KEY_LEN );
-    }
+    }*/
 
     /*
      * Make sure that the private key and the allocated working key are

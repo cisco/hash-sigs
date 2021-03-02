@@ -115,8 +115,7 @@ bool hss_generate_private_key(
     bool (*generate_random)(void *output, size_t length),
     unsigned levels,
     const param_set_t *lm_type, const param_set_t *lm_ots_type,
-    bool (*update_private_key)(unsigned char *private_key,
-            size_t len_private_key, void *context),
+	unsigned char *private_key,
         void *context,
     unsigned char *public_key, size_t len_public_key,
     unsigned char *aux_data, size_t len_aux_data,
@@ -153,9 +152,7 @@ bool hss_generate_private_key(
  * calling free() yourself)
  */
 struct hss_working_key;
-struct hss_working_key *hss_load_private_key(
-    bool (*read_private_key)(unsigned char *private_key,
-            size_t len_private_key, void *context),
+struct hss_working_key *hss_load_private_key(unsigned char *private_key,
         void *context,
     size_t memory_target,
     const unsigned char *aux_data, size_t len_aux_data, /* Optional */
@@ -192,8 +189,7 @@ void hss_free_working_key( struct hss_working_key * );
  */
 bool hss_generate_signature(
     struct hss_working_key *working_key,
-    bool (*update_private_key)(unsigned char *private_key,
-            size_t len_private_key, void *context),
+    unsigned char *private_key,
     void *context,
     const void *message, size_t message_len,
     unsigned char *signature, size_t signature_len,
@@ -250,8 +246,7 @@ struct hss_working_key *allocate_working_key(
  * working_key is a pointer to the allocated working key
  */
 bool hss_generate_working_key(
-    bool (*read_private_key)(unsigned char *private_key,
-            size_t len_private_key, void *context),
+    unsigned char *private_key,
         void *context,
     const unsigned char *aux_data, size_t len_aux_data,  /* Optional */
     struct hss_working_key *working_key,
@@ -343,8 +338,7 @@ size_t hss_get_aux_data_len(size_t max_length,
 bool hss_get_parameter_set( unsigned *levels,
                            param_set_t lm_type[ MAX_HSS_LEVELS ],
                            param_set_t lm_ots_type[ MAX_HSS_LEVELS ],
-                           bool (*read_private_key)(unsigned char *private_key,
-                                       size_t len_private_key, void *context),
+                          unsigned char *private_key,
                            void *context);
 
 enum hss_error_code {

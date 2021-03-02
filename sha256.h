@@ -8,11 +8,13 @@
 /* Length of a SHA256 hash */
 #define SHA256_LEN		32
 
+/*
 #if USE_OPENSSL
 
-#include <openssl/sha.h>
+//#include <openssl/sha.h>
 
 #else
+*/
 
 /* SHA256 context. */
 typedef struct {
@@ -31,7 +33,6 @@ void SHA256_Update(SHA256_CTX *, /* context */
 
 void SHA256_Final(unsigned char *,
                  SHA256_CTX *);
-#endif
 
 #endif /* ifdef(SHA256_H_) */
 

@@ -19,9 +19,7 @@
 /*
  * Allocate and load an ephemeral key
  */
-struct hss_working_key *hss_load_private_key(
-    bool (*read_private_key)(unsigned char *private_key,
-            size_t len_private_key, void *context),
+struct hss_working_key *hss_load_private_key(unsigned char *private_key,
         void *context,
     size_t memory_target,
     const unsigned char *aux_data, size_t len_aux_data,
@@ -31,7 +29,7 @@ struct hss_working_key *hss_load_private_key(
     unsigned levels;
     param_set_t lm[ MAX_HSS_LEVELS ];
     param_set_t ots[ MAX_HSS_LEVELS ];
-    if (!hss_get_parameter_set( &levels, lm, ots, read_private_key, context)) {
+    if (!hss_get_parameter_set( &levels, lm, ots, private_key, context)) {
         /* Can't read private key, or private key invalid */
         return 0;
     }
@@ -46,7 +44,7 @@ struct hss_working_key *hss_load_private_key(
     }
 
     /* Step 3: load the ephemeral key */
-    if (! hss_generate_working_key( read_private_key, context, 
+    if (! hss_generate_working_key( private_key, context,
                                     aux_data, len_aux_data, w, info )) {
         /* About the only thing I can see failing here is perhaps */
         /* attempting to reread the private key failed the second time; */

@@ -30,8 +30,7 @@
 bool hss_sign_init(
     struct hss_sign_inc *ctx,
     struct hss_working_key *w,
-    bool (*update_private_key)(unsigned char *private_key,
-            size_t len_private_key, void *context),
+    unsigned char *private_key,
     void *context,
     unsigned char *signature, size_t signature_len,
     struct hss_extra_info *info) {
@@ -77,7 +76,7 @@ bool hss_sign_init(
      * the bottom level OTS signature
      */
     bool success = hss_generate_signature( w,
-                            update_private_key, context,
+    		private_key, context,
                             NULL, 0,  /* <--- we don't have the message yet */
                             signature, signature_len, info );
     if (!success) {
@@ -172,7 +171,7 @@ bool hss_sign_finalize(
             info->error_code = hss_error_internal;
             return false;
         }
-         
+
         seed = seed_buff[i&1];
         I = I_buff[i&1];
 
@@ -203,7 +202,7 @@ bool hss_sign_finalize(
                           I, seed );
     if (success) {
         hss_seed_derive_set_q( &derive, ctx->q );
-        success = lm_ots_generate_signature( 
+        success = lm_ots_generate_signature(
                ots_type, I, ctx->q, &derive, hash, 0, true,
                signature, lm_ots_get_signature_len( ots_type ));
 

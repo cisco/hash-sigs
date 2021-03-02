@@ -1,12 +1,11 @@
-AR = /usr/bin/ar
-CC = /usr/bin/gcc
-CFLAGS = -Wall -O3
+CC     = arm-none-eabi-gcc
+CFLAGS = -Wall -Wextra -Wpedantic -O3 -mthumb -mcpu=cortex-m4 -mfloat-abi=hard -mfpu=fpv4-sp-d16
+AR     = arm-none-eabi-gcc-ar
 
 all: hss_lib.a \
      hss_lib_thread.a \
      hss_verify.a \
-     demo \
-     test_hss
+     demo 
 
 hss_lib.a: hss.o hss_alloc.o hss_aux.o hss_common.o \
      hss_compute.o hss_generate.o hss_keygen.o hss_param.o hss_reserve.o \
@@ -32,13 +31,7 @@ hss_verify.a: hss_verify.o hss_verify_inc.o hss_common.o hss_thread_single.o \
 	$(AR) rcs $@ $^
 
 demo: demo.c hss_lib_thread.a
-	$(CC) $(CFLAGS) demo.c hss_lib_thread.a -lcrypto -lpthread -o demo
-
-test_1: test_1.c lm_ots_common.o lm_ots_sign.o lm_ots_verify.o  endian.o hash.o sha256.o hss_zeroize.o
-	$(CC) $(CFLAGS) -o test_1 test_1.c lm_ots_common.o lm_ots_sign.o lm_ots_verify.o  endian.o hash.o sha256.o hss_zeroize.o -lcrypto
-
-test_hss: test_hss.c test_hss.h test_testvector.c test_stat.c test_keygen.c test_load.c test_sign.c test_sign_inc.c test_verify.c test_verify_inc.c test_keyload.c test_reserve.c test_thread.c test_h25.c hss.h hss_lib_thread.a
-	$(CC) $(CFLAGS) test_hss.c test_testvector.c test_stat.c test_keygen.c test_sign.c test_sign_inc.c test_load.c test_verify.c test_verify_inc.c test_keyload.c test_reserve.c test_thread.c test_h25.c hss_lib_thread.a -lcrypto -lpthread -o test_hss
+	$(CC) $(CFLAGS) demo.c hss_lib_thread.a -o demo
 
 hss.o: hss.c hss.h common_defs.h hash.h endian.h hss_internal.h hss_aux.h hss_derive.h
 	$(CC) $(CFLAGS) -c hss.c -o $@

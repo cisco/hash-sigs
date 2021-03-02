@@ -442,8 +442,7 @@ failed:
  */
 bool hss_generate_signature(
     struct hss_working_key *w,
-    bool (*update_private_key)(unsigned char *private_key,
-            size_t len_private_key, void *context),
+    unsigned char *private_key,
     void *context,
     const void *message, size_t message_len,
     unsigned char *signature, size_t signature_buf_len,
@@ -466,12 +465,12 @@ bool hss_generate_signature(
 
     /* If we're given a raw private key, make sure it's the one we're */
     /* thinking of */
-    if (!update_private_key) {
+    /*if (!update_private_key) {
         if (0 != memcmp( context, w->private_key, PRIVATE_KEY_LEN)) {
             info->error_code = hss_error_key_mismatch;
-            return false;   /* Private key mismatch */
+            return false;    Private key mismatch
         }
-    }
+    }*/
 
     /* Check if the buffer we were given is too short */
     if (w->signature_len > signature_buf_len) {
@@ -495,7 +494,7 @@ bool hss_generate_signature(
 
     /* Ok, try to advance the private key */
     if (!hss_advance_count(w, current_count,
-                               update_private_key, context, info,
+    		private_key, context, info,
                                &trash_private_key)) {
         /* hss_advance_count fills in the error reason */
         goto failed;

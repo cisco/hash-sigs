@@ -55,8 +55,7 @@ struct hss_extra_info;
 bool hss_sign_init(
     struct hss_sign_inc *ctx,
     struct hss_working_key *working_key,
-    bool (*update_private_key)(unsigned char *private_key,
-            size_t len_private_key, void *context),
+    unsigned char *private_key,
     void *context,
     unsigned char *signature, size_t signature_len,
     struct hss_extra_info *info);

@@ -37,8 +37,7 @@ bool hss_set_autoreserve(struct hss_working_key *w,
  * far it needs to advance it
  */
 bool hss_advance_count(struct hss_working_key *w, sequence_t cur_count,
-        bool (*update_private_key)(unsigned char *private_key,
-                size_t len_private_key, void *context),
+        unsigned char *private_key,
         void *context,
         struct hss_extra_info *info, bool *trash_private_key) {
 
@@ -52,7 +51,7 @@ bool hss_advance_count(struct hss_working_key *w, sequence_t cur_count,
         *trash_private_key = true;  /* We can't trash our copy of the */
                 /* private key until after we've generated the signature */
                 /* We can trash the copy in secure storage, though */
-        if (update_private_key) {
+        /*if (update_private_key) {
             unsigned char private_key[PRIVATE_KEY_LEN];
             memset( private_key, PARM_SET_END, PRIVATE_KEY_LEN );
             if (!update_private_key(private_key, PRIVATE_KEY_LEN, context)) {
@@ -61,7 +60,7 @@ bool hss_advance_count(struct hss_working_key *w, sequence_t cur_count,
             }
         } else {
             memset( context, PARM_SET_END, PRIVATE_KEY_LEN );
-        }
+        }*/
         return true;
     }
     sequence_t new_count = cur_count + 1;
@@ -79,11 +78,11 @@ bool hss_advance_count(struct hss_working_key *w, sequence_t cur_count,
 
         put_bigendian( w->private_key + PRIVATE_KEY_INDEX, new_count,
                        PRIVATE_KEY_INDEX_LEN );
-        if (update_private_key) {
+        /*if (update_private_key) {
             if (!update_private_key(w->private_key, PRIVATE_KEY_INDEX_LEN,
                                    context)) {
-                 /* Oops, we couldn't write the private key; undo the */
-                 /* reservation advance (and return an error) */
+                  Oops, we couldn't write the private key; undo the
+                  reservation advance (and return an error)
                  info->error_code = hss_error_private_key_write_failed;
                  put_bigendian( w->private_key + PRIVATE_KEY_INDEX,
                        w->reserve_count, PRIVATE_KEY_INDEX_LEN );
@@ -91,7 +90,7 @@ bool hss_advance_count(struct hss_working_key *w, sequence_t cur_count,
             }
         } else {
             put_bigendian( context, new_count, PRIVATE_KEY_INDEX_LEN );
-        }
+        }*/
         w->reserve_count = new_count;
     }
 

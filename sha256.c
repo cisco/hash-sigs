@@ -15,7 +15,6 @@
 #include "sha256.h"
 #include "endian.h"
 
-#if !USE_OPENSSL
 
 /* If we don't have OpenSSL, here's a SHA256 implementation */
 #define SHA256_FINALCOUNT_SIZE  8
@@ -180,4 +179,3 @@ void SHA256_Final (unsigned char *digest, SHA256_CTX *ctx)
         put_bigendian( digest + 4*i, ctx->h[i], 4 );
     }
 }
-#endif
