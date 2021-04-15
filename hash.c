@@ -165,7 +165,7 @@ unsigned hss_hash_blocksize(int hash_type) {
         /* We call this function in order to do HMAC; doing HMAC on SHAKE */
         /* is not usual (KMAC is preferred), however we fill in a value */
         /* anyways */
-    case HASH_SHAKE256: case HASH_SHAKE256_24: return 200;
+    case HASH_SHAKE256: case HASH_SHAKE256_24: return 136;
     }
     return 0;
 }
