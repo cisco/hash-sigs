@@ -297,7 +297,7 @@ bool hss_set_autoreserve(
 size_t hss_get_private_key_len(unsigned levels,
                    const param_set_t *lm_type,
                    const param_set_t *lm_ots_type);
-#define HSS_MAX_PRIVATE_KEY_LEN (8 + 8 + MAX_SEED_LEN + 16)
+#define HSS_MAX_PRIVATE_KEY_LEN (8 + 16 + MAX_SEED_LEN + 16)
 
 /*
  * This include file has the functions that contains the lengths of the other
@@ -329,7 +329,7 @@ size_t hss_get_aux_data_len(size_t max_length,
  * This is here to solve a chicken-and-egg problem: the hss_working_key
  * must be initialized to the same parameter set as the private key,
  * but (other than this function, or somehow remembering it) there's
- * no way to retreive the parameter set.
+ * no way to retrieve the parameter set.
  *
  * read_private_key/context will read the private key (if read_private_key is
  * NULL, context is assumed to point to the private key)
@@ -345,12 +345,13 @@ bool hss_get_parameter_set( unsigned *levels,
                            param_set_t lm_ots_type[ MAX_HSS_LEVELS ],
                            bool (*read_private_key)(unsigned char *private_key,
                                        size_t len_private_key, void *context),
-                           void *context);
+                           void *context,
+                           struct hss_extra_info *info);
 
 enum hss_error_code {
     hss_error_none = 0,      /* I don't know nothing about any error */
 
-    hss_range_normal_failures, /* There errors happen during normal use */
+    hss_range_normal_failures, /* These errors happen during normal use */
                              /* of the signature scheme */
     hss_error_bad_signature, /* Invalid signature */
     hss_error_private_key_expired, /* This private key has generated all */
@@ -379,9 +380,10 @@ enum hss_error_code {
                              /* properly */
     hss_error_ctx_already_used, /* The ctx has already been used */
     hss_error_bad_public_key, /* Somehow, we got an invalid public key */
+    hss_error_bad_private_key, /* Somehow, we got an invalid private key */
 
-    hss_range_processing_error, /* These errors are cause by an */
-                             /* error while processing */
+    hss_range_processing_error, /* These errors are caused by an */
+                             /* error detected by an external function */
     hss_error_bad_randomness, /* The RNG claimed failure */
     hss_error_private_key_write_failed, /* The write of the private key */
                              /* to NVRAM failed */

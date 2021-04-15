@@ -167,17 +167,20 @@ sources.
   this subsystem, and what they really mean
   private key
       This is what the raw private key looks like.  It's not a formal C
-      structure; instead, it is a byte array, currently 48 bytes long,
-      split up into:
+      structure; instead, it is a byte array, currently 56-72 bytes long
+      (depending on the secret method selected), split up into:
       - 8 bytes of count; this is the state that gets updated with every
         signature, and consists of a bigendian count of the number of
         signatures so far.  By convention, a setting of 0xffffffffffffffff
         means 'we're used up all our signatures'
-      - 8 bytes of parameter set, in a compressed format.  This is here so
+      - 16 bytes of parameter set, in a compressed format.  This is here so
         that the application needn't tell us what the parmaeter set when
         loading a key (and can't get it wrong)
       - 32 bytes of random seed; this is where all the security comes from.
         It is 32 bytes (256 bits) so Grover's algorthm can't recover it.
+      - (Optional) 16 bytes of top level I value; this is here if
+        SECRET_METHOD == 2, as that method derives the I value from the
+        initial randomness (and so we need a place to store it)
       This is a flat set of bytes, because we hand it to read_private_key
       and update_private_key routines, which are expected to read/write
       them to long term storage.
@@ -237,8 +240,8 @@ sources.
       In addition, any such pointer to a (struct thread_collection) may be
       NULL; this is never considered an error condition, rather it is an
       indication that we're running in single-threaded mode (either because
-      that's how we're linked, or because we got an error spawning the
-      thread).
+      that's how we're linked, because the application asked us to run in
+      single-thread mode or because we got an error spawning the thread).
   struct expanded_aux_data
       This is an array of pointers to the various node values that occur
       at various sublevels within the aux data; for any level that isn't
@@ -333,7 +336,7 @@ sources.
            or a bug somewhere
    struct seed_derive
      This is the structure we use to derive keys in a potentially side
-     channel resistant manner.  There are two different versions of this
+     channel resistant manner.  There are three different versions of this
      structure (with the same API, controlled by #define's) that map
      the current seed, I value, q value (Merkle tree node index) and
      j value (Winternitz digit index) into unpredictable values for the
@@ -548,20 +551,22 @@ sources.
   common_defs.h		This is a central spot to put definitions of general
 			interest of the entire subsystem
   demo.c		This is an example program that uses this subsystem; it
-			implements a simple file signer.  Note: because it
+			implements a simple file signer.  Note: becauSe it
 			doesn't get that great of randomness (due to the need
 			to restrict ourselves to standard C), it probably
 			shouldn't be used as is.  It does try to use
 			/dev/urandom; that's of help only on OS's that
 			actually implement /dev/urandom
   endian.[ch]		Routines to read/write values in bigendian format
+  fips202.[ch]          The software SHAKE implementation
   hash.[ch]		Routines to implement the hashing API, as used by the
-			rest of the subsystem.  This currently only implements
-			SHA-256, it'll support other hashes once LMS does.
-			Note that there really are three separate APIs to do
-			hashing (hash this entire string, hash this string
-			using this context variable as a temp, do on-line
-			hashing); those are all used at various times.
+                        rest of the subsystem.  This currently implements
+                        SHA-256, SHA-256/192 and SHAKE256 (with both 192 and
+                        256 bit outputs).  Note that there really are three
+                        separate APIs to do hashing (hash this entire string,
+                        hash this string using this context variable as a
+                        temp, do on-line hashing); those are all used at
+                        various times.
   hss.c			This used to be where all the code lived; however, we
 			have since migrated the vast majority of the routines
 			to more appropriate source files (so we don't have a
@@ -605,7 +610,7 @@ sources.
                         in an incremental fashion.
   hss_sign_inc.h        This is the public include file for the incremental
                         signature routines.  It's in its own file because it
-                        needs to pull in some internal files (e.g. hash.h)'
+                        needs to pull in some internal files (e.g. hash.h)
                         that we generally don't need to hand to people
   hss_thread.h		This is the internal prototype for our internal
 			threading abstraction.  We have two implementations of
@@ -656,7 +661,7 @@ sources.
 			USE_OPENSSL is 0.  This is provided in case you don't
 			have OpenSSL available.
   sha256.h		Routine that computes the SHA-256 hash.  This is the
-			same interface that OpenSSL presents.  We also
+			same interface that OpenSSL presents.  We alsO
 			include a #define (USE_OPENSSL); if 1, these are
 			direct calls to OpenSSL; if 0, we use our own
 			implementation (in case you don't have OpenSSL
