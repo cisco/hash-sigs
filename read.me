@@ -1,5 +1,5 @@
 This code attempts to be a usable implementation of of the LMS Hash Based
-Signature Scheme from RFC 8554.
+Signature Scheme from RFC 8554 (Leighton-Micali Hash-Based Signatures).
 
 This is a signature scheme (that is, someone with the private key can sign
 messages, someone with the public key can verify sigantures, but cannot
@@ -161,12 +161,13 @@ feature-centric order, rather than a problem-centric one:
   private key into three parts:
   - A short section which is meant to be saved in secure storage (and this is
     the part which is referred to as the 'private key'; this includes the
-    number of signatures generated so far.  It's currently 48 bytes long
+    number of signatures generated so far.  It's currently 56-72 bytes long
     (with the part that needs to be actually updated only 8 bytes), we assume
-    that it is updated atomically.  These 48 bytes consist of an 8 byte count
-    of the number of sigantures generated so far, 8 bytes of a compressed
-    version of the parameter set, and 32 bytes of 'seed' (a random value that
-    is used to derive every secret)
+    that it is updated atomically.  These 56-72 bytes consist of an 8 byte
+    count of the number of sigantures generated so far, 16 bytes of a
+    compressed version of the parameter set, and 32 bytes of 'seed' (a random
+    value that is used to derive every secret), and optionally 16 bytes of the
+    root I value.
   - A longer section (the "working key") that resides in memory; we assume
     that this is private, but need not be saved into long term (nonvolatile)
     storage.  This section include the Merkle tree contents (actually, a
@@ -272,7 +273,8 @@ real applications really ought not do.
 General notes:
 
 - Advice about parameter sets: while this supports all the HSS parameter sets
-  currently allowed in draft-mcgrew-hash-sigs-08, some work better than others
+  currently allowed in RFC 8554 and draft-fluhrer-more-parm-sets, some work
+  better than others.
   The general recommendation is to use a few large trees (that is, with lots
   of levels), rather than using a number of levels of smaller trees; this
   package tries to make large trees not that costly (and reducing the number
@@ -395,6 +397,14 @@ General notes:
   or
       struct hss_extra_info info;
       hss_init_extra_info( &info );
+
+- This library supports the parameter sets of RFC 8554 and
+  draft-fluhrer-lms-more-parm-sets.  Personally, the 192-bit SHA-256
+  parameter sets are nice (as it reduces the signature size quite a bit).  On
+  the other hand, I personally don't see a great deal of benefit to the
+  SHAKE-based parameter sets (unless you don't trust the cryptographical
+  strength of SHA-256).  On my machine (with no special SHA-256 or SHAKE
+  instructions), the SHAKE parameter sets tested at over 4 times slower.
 
 Future ideas; I'm not against future ideas, but this package is getting
 sufficiently complex that I'm not likely to do anything that adds even more
