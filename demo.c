@@ -329,7 +329,7 @@ static int keygen(const char *keyname, const char *parm_set) {
         aux = 0;
     }
 
-    printf( "Generating public key %s (will take a while)\n",
+    printf( "Generating private key %s (will take a while)\n",
                                        private_key_filename );
     if (!hss_generate_private_key(
         do_rand,       /* Routine to generate randomness */
