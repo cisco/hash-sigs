@@ -9,9 +9,6 @@
                         /* (which is quite a bit faster than our portable */
                         /* C version) */
 
-/* Length of a SHA256 hash */
-#define SHA256_LEN		32
-
 #if USE_OPENSSL
 
 #include <openssl/sha.h>
@@ -38,6 +35,10 @@ void SHA256_Final(unsigned char *,
 #endif
 
 #endif /* EXT_SHA256_H */
+
+#if !defined( SHA256_LEN )
+#define SHA256_LEN 32    /* The length of a SHA256 hash output */
+#endif
 
 #endif /* ifdef(SHA256_H_) */
 
