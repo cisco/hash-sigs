@@ -1,12 +1,13 @@
 #if !defined(SHA256_H_)
 #define SHA256_H_
 
+#if defined( EXT_SHA256_H )
+#include EXT_SHA256_H
+#else
+
 #define USE_OPENSSL 1   /* We use the OpenSSL implementation for SHA-256 */
                         /* (which is quite a bit faster than our portable */
                         /* C version) */
-
-/* Length of a SHA256 hash */
-#define SHA256_LEN		32
 
 #if USE_OPENSSL
 
@@ -31,6 +32,12 @@ void SHA256_Update(SHA256_CTX *, /* context */
 
 void SHA256_Final(unsigned char *,
                  SHA256_CTX *);
+#endif
+
+#endif /* EXT_SHA256_H */
+
+#if !defined( SHA256_LEN )
+#define SHA256_LEN 32    /* The length of a SHA256 hash output */
 #endif
 
 #endif /* ifdef(SHA256_H_) */
