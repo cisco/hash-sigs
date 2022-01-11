@@ -551,7 +551,7 @@ sources.
   common_defs.h		This is a central spot to put definitions of general
 			interest of the entire subsystem
   demo.c		This is an example program that uses this subsystem; it
-			implements a simple file signer.  Note: becauSe it
+			implements a simple file signer.  Note: because it
 			doesn't get that great of randomness (due to the need
 			to restrict ourselves to standard C), it probably
 			shouldn't be used as is.  It does try to use
@@ -661,7 +661,7 @@ sources.
 			USE_OPENSSL is 0.  This is provided in case you don't
 			have OpenSSL available.
   sha256.h		Routine that computes the SHA-256 hash.  This is the
-			same interface that OpenSSL presents.  We alsO
+			same interface that OpenSSL presents.  We also
 			include a #define (USE_OPENSSL); if 1, these are
 			direct calls to OpenSSL; if 0, we use our own
 			implementation (in case you don't have OpenSSL
