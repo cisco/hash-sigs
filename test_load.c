@@ -145,9 +145,15 @@ bool test_load(bool fast_flag, bool quiet_flag) {
     if (!test_aux( LMS_SHA256_N24_H10, LMOTS_SHA256_N24_W2, 24)) return false;
     if (!test_aux( LMS_SHA256_N32_H15, LMOTS_SHA256_N32_W2, 32 )) return false;
     if (!test_aux( LMS_SHA256_N24_H15, LMOTS_SHA256_N24_W2, 24 )) return false;
+    if (!test_aux( LMS_SHAKE256_N24_H5, LMOTS_SHAKE256_N24_W2, 24 )) return false;
+    if (!test_aux( LMS_SHAKE256_N32_H5, LMOTS_SHAKE256_N32_W2, 32 )) return false;
     if (!fast_flag) {
         if (!test_aux( LMS_SHA256_N32_H20, LMOTS_SHA256_N32_W2, 32 )) return false;
         if (!test_aux( LMS_SHA256_N24_H20, LMOTS_SHA256_N24_W2, 24 )) return false;
+        if (!test_aux( LMS_SHAKE256_N24_H10, LMOTS_SHAKE256_N24_W2, 24 )) return false;
+        if (!test_aux( LMS_SHAKE256_N32_H10, LMOTS_SHAKE256_N32_W2, 32 )) return false;
+        if (!test_aux( LMS_SHAKE256_N24_H20, LMOTS_SHAKE256_N24_W2, 24 )) return false;
+        if (!test_aux( LMS_SHAKE256_N32_H20, LMOTS_SHAKE256_N32_W2, 32 )) return false;
     }
 
     /*
@@ -174,6 +180,10 @@ bool test_load(bool fast_flag, bool quiet_flag) {
                    (ul)LMS_SHA256_N24_H10, (ul)LMOTS_SHA256_N24_W2)) return false;
     if (!load_key( &index, priv_key, w, 1,
                    (ul)LMS_SHA256_N24_H10, (ul)LMOTS_SHA256_N24_W4)) return false;
+    if (!load_key( &index, priv_key, w, 1,
+                   (ul)LMS_SHAKE256_N24_H10, (ul)LMOTS_SHAKE256_N24_W2)) return false;
+    if (!load_key( &index, priv_key, w, 1,
+                   (ul)LMS_SHAKE256_N24_H10, (ul)LMOTS_SHAKE256_N24_W4)) return false;
     if (!load_key( &index, priv_key, w, 2,
                    (ul)LMS_SHA256_N24_H5, (ul)LMOTS_SHA256_N24_W2,
                    (ul)LMS_SHA256_N32_H5, (ul)LMOTS_SHA256_N32_W2)) return false;

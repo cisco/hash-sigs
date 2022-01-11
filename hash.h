@@ -1,6 +1,7 @@
 #if !defined( HASH_H__ )
 #define HASH_H__
 #include "sha256.h"
+#include "fips202.h"
 #include <stddef.h>
 #include <stdbool.h>
 
@@ -16,10 +17,13 @@
 enum {
     HASH_SHA256 = 1,    /* SHA256 */
     HASH_SHA256_24 = 2, /* SHA256 truncated to 24 bytes */
+    HASH_SHAKE256 = 3,  /* SHAKE256 */
+    HASH_SHAKE256_24 = 4, /* SHAKE256 truncated to 24 bytes */
 };
 
 union hash_context {
     SHA256_CTX sha256;
+    keccak_state shake256;
     /* Any other hash contexts would go here */
 };
 

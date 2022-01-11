@@ -808,6 +808,7 @@ static int parse_parm_set( int *levels, param_set_t *lm_array,
     size_t aux = DEFAULT_AUX_DATA;
 
     int hash_type = 0;  /* 1 -> 192 bit SHA256, 0 -> 256 bit SHA256 */
+                        /* 3 -> 192 bit SHAKE256, 2 -> 256 bit SHAKE256 */
 
     /* Get the hash function.  Now, HSS doesn't require us to use the same */
     /* hash function everywhere, however allowing different hash functions */
@@ -815,12 +816,16 @@ static int parse_parm_set( int *levels, param_set_t *lm_array,
     /* specific reason to actually use it */
     if (check_string( &parm_set, "SHA192," )) {
         hash_type = 1;
+    } else if (check_string( &parm_set, "SHAKE192," )) {
+        hash_type = 3;
+    } else if (check_string( &parm_set, "SHAKE256," )) {
+        hash_type = 2;
     } else {
         /* Remove the initial SHA256, string, if present */
         (void)check_string( &parm_set, "SHA256," );
         hash_type = 0;
     }
-    *upper_hash_size = pick( hash_type, 32, 24 );
+    *upper_hash_size = pick( hash_type, 32, 24, 32, 24 );
 
     for (i=0;; i++) {
         if (i == 8) {
@@ -832,19 +837,29 @@ static int parse_parm_set( int *levels, param_set_t *lm_array,
         param_set_t lm;
         switch (h) {
         case 5:  lm = pick( hash_type, LMS_SHA256_N32_H5,
-                                       LMS_SHA256_N24_H5 );
+                                       LMS_SHA256_N24_H5,
+                                       LMS_SHAKE256_N32_H5,
+                                       LMS_SHAKE256_N24_H5 );
                  break;
         case 10: lm = pick( hash_type, LMS_SHA256_N32_H10,
-                                       LMS_SHA256_N24_H10 );
+                                       LMS_SHA256_N24_H10,
+                                       LMS_SHAKE256_N32_H10,
+                                       LMS_SHAKE256_N24_H10 );
                  break;
         case 15: lm = pick( hash_type, LMS_SHA256_N32_H15,
-                                       LMS_SHA256_N24_H15 );
+                                       LMS_SHA256_N24_H15,
+                                       LMS_SHAKE256_N32_H15,
+                                       LMS_SHAKE256_N24_H15 );
                  break;
         case 20: lm = pick( hash_type, LMS_SHA256_N32_H20,
-                                       LMS_SHA256_N24_H20 );
+                                       LMS_SHA256_N24_H20,
+                                       LMS_SHAKE256_N32_H20,
+                                       LMS_SHAKE256_N24_H20 );
                  break;
         case 25: lm = pick( hash_type, LMS_SHA256_N32_H25,
-                                       LMS_SHA256_N24_H25 );
+                                       LMS_SHA256_N24_H25,
+                                       LMS_SHAKE256_N32_H25,
+                                       LMS_SHAKE256_N24_H25 );
                  break;
         case 0: printf( "Error: expected height of Merkle tree\n" ); return 0;
         default: printf( "Error: unsupported Merkle tree height %d\n", h );
@@ -853,22 +868,32 @@ static int parse_parm_set( int *levels, param_set_t *lm_array,
         }
         /* Now see if we can get the Winternitz parameter */
         param_set_t ots = pick( hash_type, LMOTS_SHA256_N32_W8,
-                                           LMOTS_SHA256_N24_W8 );
+                                           LMOTS_SHA256_N24_W8,
+                                           LMOTS_SHAKE256_N32_W8,
+                                           LMOTS_SHAKE256_N24_W8 );
         if (*parm_set == '/') {
             parm_set++;
             int w = get_integer( &parm_set );
             switch (w) {
             case 1: ots = pick( hash_type, LMOTS_SHA256_N32_W1,
-                                           LMOTS_SHA256_N24_W1 );
+                                           LMOTS_SHA256_N24_W1,
+                                           LMOTS_SHAKE256_N32_W1,
+                                           LMOTS_SHAKE256_N24_W1 );
                     break;
             case 2: ots = pick( hash_type, LMOTS_SHA256_N32_W2,
-                                           LMOTS_SHA256_N24_W2 );
+                                           LMOTS_SHA256_N24_W2,
+                                           LMOTS_SHAKE256_N32_W2,
+                                           LMOTS_SHAKE256_N24_W2 );
                     break;
             case 4: ots = pick( hash_type, LMOTS_SHA256_N32_W4,
-                                           LMOTS_SHA256_N24_W4 );
+                                           LMOTS_SHA256_N24_W4,
+                                           LMOTS_SHAKE256_N32_W4,
+                                           LMOTS_SHAKE256_N24_W4 );
                     break;
             case 8: ots = pick( hash_type, LMOTS_SHA256_N32_W8,
-                                           LMOTS_SHA256_N24_W8 );
+                                           LMOTS_SHA256_N24_W8,
+                                           LMOTS_SHAKE256_N32_W8,
+                                           LMOTS_SHAKE256_N24_W8 );
                     break;
             case 0: printf( "Error: expected Winternitz parameter\n" ); return 0;
             default: printf( "Error: unsupported Winternitz parameter %d\n", w );
@@ -899,6 +924,8 @@ static const char *hash_name(int hash_type) {
     switch (hash_type) {
     case 0: return "SHA-256/192";
     case 1: return "SHA-256";
+    case 2: return "SHAKE-256/192";
+    case 3: return "SHAKE-256";
     default: return "???";
     }
 }
@@ -921,6 +948,16 @@ static void list_parameter_set(int levels, const param_set_t *lm_array,
         case LMS_SHA256_N24_H15: h = 15; hash = 0; break;
         case LMS_SHA256_N24_H20: h = 20; hash = 0; break;
         case LMS_SHA256_N24_H25: h = 25; hash = 0; break;
+        case LMS_SHAKE256_N32_H5:  h = 5;  hash = 3; break;
+        case LMS_SHAKE256_N32_H10: h = 10; hash = 3; break;
+        case LMS_SHAKE256_N32_H15: h = 15; hash = 3; break;
+        case LMS_SHAKE256_N32_H20: h = 20; hash = 3; break;
+        case LMS_SHAKE256_N32_H25: h = 25; hash = 3; break;
+        case LMS_SHAKE256_N24_H5:  h = 5;  hash = 2; break;
+        case LMS_SHAKE256_N24_H10: h = 10; hash = 2; break;
+        case LMS_SHAKE256_N24_H15: h = 15; hash = 2; break;
+        case LMS_SHAKE256_N24_H20: h = 20; hash = 2; break;
+        case LMS_SHAKE256_N24_H25: h = 25; hash = 2; break;
         }
         printf( "Level %d: hash function = %s; ", i, hash_name(hash) );
         printf( "%d level Merkle tree; ", h );
@@ -935,6 +972,14 @@ static void list_parameter_set(int levels, const param_set_t *lm_array,
         case LMOTS_SHA256_N24_W2: w = 2; hash2 = 0; break;
         case LMOTS_SHA256_N24_W4: w = 4; hash2 = 0; break;
         case LMOTS_SHA256_N24_W8: w = 8; hash2 = 0; break;
+        case LMOTS_SHAKE256_N32_W1: w = 1; hash2 = 3; break;
+        case LMOTS_SHAKE256_N32_W2: w = 2; hash2 = 3; break;
+        case LMOTS_SHAKE256_N32_W4: w = 4; hash2 = 3; break;
+        case LMOTS_SHAKE256_N32_W8: w = 8; hash2 = 3; break;
+        case LMOTS_SHAKE256_N24_W1: w = 1; hash2 = 2; break;
+        case LMOTS_SHAKE256_N24_W2: w = 2; hash2 = 2; break;
+        case LMOTS_SHAKE256_N24_W4: w = 4; hash2 = 2; break;
+        case LMOTS_SHAKE256_N24_W8: w = 8; hash2 = 2; break;
         }
         printf( "Winternitz param %d\n", w );
         if (hash != hash2) {

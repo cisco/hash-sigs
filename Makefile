@@ -14,7 +14,7 @@ hss_lib.a: hss.o hss_alloc.o hss_aux.o hss_common.o \
      hss_verify.o hss_verify_inc.o hss_derive.o \
      hss_derive.o hss_zeroize.o lm_common.o \
      lm_ots_common.o lm_ots_sign.o lm_ots_verify.o lm_verify.o endian.o \
-     hash.o sha256.o
+     hash.o sha256.o fips202.o
 	$(AR) rcs $@ $^
 
 hss_lib_thread.a: hss.o hss_alloc.o hss_aux.o hss_common.o \
@@ -23,22 +23,22 @@ hss_lib_thread.a: hss.o hss_alloc.o hss_aux.o hss_common.o \
      hss_verify.o hss_verify_inc.o \
      hss_derive.o hss_zeroize.o lm_common.o \
      lm_ots_common.o lm_ots_sign.o lm_ots_verify.o lm_verify.o endian.o \
-     hash.o sha256.o
+     hash.o sha256.o fips202.o
 	$(AR) rcs $@ $^
 
 hss_verify.a: hss_verify.o hss_verify_inc.o hss_common.o hss_thread_single.o \
     hss_zeroize.o lm_common.o lm_ots_common.o lm_ots_verify.o lm_verify.o \
-    endian.o hash.o sha256.o
+    endian.o hash.o sha256.o fips202.o
 	$(AR) rcs $@ $^
 
 demo: demo.c hss_lib_thread.a
 	$(CC) $(CFLAGS) demo.c hss_lib_thread.a -lcrypto -lpthread -o demo
 
-test_1: test_1.c lm_ots_common.o lm_ots_sign.o lm_ots_verify.o  endian.o hash.o sha256.o hss_zeroize.o
-	$(CC) $(CFLAGS) -o test_1 test_1.c lm_ots_common.o lm_ots_sign.o lm_ots_verify.o  endian.o hash.o sha256.o hss_zeroize.o -lcrypto
+test_1: test_1.c lm_ots_common.o lm_ots_sign.o lm_ots_verify.o  endian.o hash.o sha256.o h fips202.o ss_zeroize.o
+	$(CC) $(CFLAGS) -o test_1 test_1.c lm_ots_common.o lm_ots_sign.o lm_ots_verify.o  endian.o hash.o sha256.o fips202.o hss_zeroize.o -lcrypto
 
-test_hss: test_hss.c test_hss.h test_testvector.c test_stat.c test_keygen.c test_load.c test_sign.c test_sign_inc.c test_verify.c test_verify_inc.c test_keyload.c test_reserve.c test_thread.c test_h25.c hss.h hss_lib_thread.a
-	$(CC) $(CFLAGS) test_hss.c test_testvector.c test_stat.c test_keygen.c test_sign.c test_sign_inc.c test_load.c test_verify.c test_verify_inc.c test_keyload.c test_reserve.c test_thread.c test_h25.c hss_lib_thread.a -lcrypto -lpthread -o test_hss
+test_hss: test_hss.c test_hss.h test_testvector.c test_shake.c test_stat.c test_keygen.c test_load.c test_sign.c test_sign_inc.c test_verify.c test_verify_inc.c test_keyload.c test_reserve.c test_thread.c test_h25.c hss.h hss_lib_thread.a
+	$(CC) $(CFLAGS) test_hss.c test_testvector.c test_shake.c test_stat.c test_keygen.c test_sign.c test_sign_inc.c test_load.c test_verify.c test_verify_inc.c test_keyload.c test_reserve.c test_thread.c test_h25.c hss_lib_thread.a -lcrypto -lpthread -o test_hss
 
 hss.o: hss.c hss.h common_defs.h hash.h endian.h hss_internal.h hss_aux.h hss_derive.h config.h
 	$(CC) $(CFLAGS) -c hss.c -o $@
@@ -109,11 +109,14 @@ lm_verify.o: lm_verify.c lm_verify.h lm_common.h lm_ots_common.h lm_ots_verify.h
 endian.o: endian.c endian.h config.h
 	$(CC) $(CFLAGS) -c endian.c -o $@
 
-hash.o: hash.c hash.h sha256.h hss_zeroize.h config.h
+hash.o: hash.c hash.h sha256.h fips202.h hss_zeroize.h config.h
 	$(CC) $(CFLAGS) -c hash.c -o $@
 
 sha256.o: sha256.c sha256.h endian.h config.h
 	$(CC) $(CFLAGS) -c sha256.c -o $@
+
+fips202.o: fips202.c fips202.h
+	$(CC) $(CFLAGS) -c fips202.c -o $@
 
 clean:
 	-rm *.o *.a demo test_hss
