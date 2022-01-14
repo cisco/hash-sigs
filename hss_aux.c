@@ -3,7 +3,6 @@
  */
 
 #include <string.h>
-#include <stdlib.h>
 #include "hss_aux.h"
 #include "hss_internal.h"
 #include "common_defs.h"
@@ -103,6 +102,25 @@ aux_level_t hss_optimal_aux_level( size_t max_length,
 }
 
 /*
+ * This compares the n bytes at l'a' and at 'b' in time (hopefully) independent
+ * for what's in 'a' and 'b'
+ * If they are the same, it returns 0 - if not, it returns some other value
+ * I wrote it this way to make it less likely that a clever compiler would
+ * be able to 'optimize' this into something nonconstant time (in part, because
+ * while we know 'sum' will never wrap, the compiler is likely not able to
+ * verify it)
+ */
+static unsigned memcmp_consttime( const void *a, const void *b, size_t n ) {
+    unsigned sum = 0;
+    const unsigned char *p = a;
+    const unsigned char *q = b;
+    while (n--) {
+	sum += *p++ ^ *q++;
+    }
+    return sum;
+}
+
+/*
  * This takes a saved aux data, and initializes an array of pointers into it
  * If a working key is provided, it'll also authenticate the data within the
  * structure
@@ -149,7 +167,7 @@ struct expanded_aux_data *hss_expand_aux_data( const unsigned char *aux_data,
                           orig_aux_data, aux_data - orig_aux_data );
         hss_zeroize( key, size_hash );
         hss_zeroize( &ctx, sizeof ctx );
-        if (0 != memcmp( expected_mac, aux_data, size_hash)) {
+        if (0 != memcmp_consttime( expected_mac, aux_data, size_hash)) {
             /* The MAC did not agree; ignore the aux data */
             return 0;
         }
