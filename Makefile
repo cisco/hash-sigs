@@ -1,6 +1,8 @@
+LDFLAGS=-L/opt/homebrew/opt/openssl@3/lib
+CPPFLAGS=-I/opt/homebrew/opt/openssl@3/include
 AR = /usr/bin/ar
-CC = /usr/bin/gcc
-CFLAGS = -Wall -O3
+CC = /usr/bin/gcc 
+CFLAGS = -Wall -O3 $(LDFLAGS) $(CPPFLAGS)
 
 all: hss_lib.a \
      hss_lib_thread.a \
