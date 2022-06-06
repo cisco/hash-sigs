@@ -15,10 +15,11 @@
 +---------+------------+---------+-------------+
 | ParmSet | KeyGenTime | SigSize | KeyLifetime |
 +---------+------------+---------+-------------+
-| 15      | 6 sec      | 1616    | 30 seconds  |
+| 10/10   | -----      | ----    | ----------  |
 */
-#define PARAM_LEVEL 1
-#define PARAM_LM_HEIGHT LMS_SHA256_N32_H15
+#define PARAM_LEVEL 2
+#define PARAM_LM_HEIGHT0 LMS_SHA256_N32_H10
+#define PARAM_LM_HEIGHT1 LMS_SHA256_N32_H10
 #define PARAM_OTS_WIDTH LMOTS_SHA256_N32_W8
 
 #elif NIST_LEVEL == 3
