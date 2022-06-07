@@ -18,7 +18,8 @@
 *
 * Returns 0 (success)
 **************************************************/
-int crypto_sign_keypair(uint8_t *pk, size_t *pklen, uint8_t *sk, size_t *sklen)
+int crypto_sign_keypair(unsigned char *pk, size_t *pklen,
+                        unsigned char *sk, size_t *sklen)
 {
     uint8_t buf[48];
     /* Select NIST KAT as random generator*/
@@ -31,10 +32,14 @@ int crypto_sign_keypair(uint8_t *pk, size_t *pklen, uint8_t *sk, size_t *sklen)
     OQS_randombytes(buf, 48);
     OQS_randombytes_nist_kat_init_256bit(buf, NULL);
 
+#if NIST_LEVEL == 1
+    param_set_t lm_type[]  = {PARAM_LM_HEIGHT};
+    param_set_t ots_type[] = {PARAM_OTS_WIDTH};
+#else 
     param_set_t lm_type[]  = {PARAM_LM_HEIGHT0, PARAM_LM_HEIGHT1};
     param_set_t ots_type[] = {PARAM_OTS_WIDTH , PARAM_OTS_WIDTH};
+#endif
     unsigned levels = PARAM_LEVEL;
-
     /* Generate keypair using LMS API */
 
     /* Maximum size of aux data for optimal performance */
@@ -63,8 +68,8 @@ int crypto_sign_keypair(uint8_t *pk, size_t *pklen, uint8_t *sk, size_t *sklen)
 /* 
  * Sign a message
  */
-int crypto_sign(uint8_t *sig, size_t *siglen,
-                const uint8_t *m, size_t mlen, const uint8_t *sk)
+int crypto_sign(unsigned char *sig, size_t *siglen,
+                const unsigned char *m, size_t mlen, const unsigned char *sk)
 {
     unsigned char aux_data[10240];
     struct hss_working_key *working_key = hss_load_private_key(NULL, sk, 
@@ -91,8 +96,8 @@ int crypto_sign(uint8_t *sig, size_t *siglen,
 /* 
  * Verify a signed message
  */
-int crypto_sign_open(uint8_t *m, size_t *mlen,
-                     const uint8_t *sm, size_t smlen, const uint8_t *pk)
+int crypto_sign_open(unsigned char *m, size_t *mlen,
+                     const unsigned char *sm, size_t smlen, const unsigned char *pk)
 {
     bool success = hss_validate_signature(pk, m, *mlen, sm, smlen, 0);
 
@@ -109,7 +114,8 @@ int crypto_sign_open(uint8_t *m, size_t *mlen,
  * Input is secrect key. 
  * 
  */
-int crypto_remain_signatures(uint8_t *sk, uint64_t *remain, uint64_t *max)
+int crypto_remain_signatures(unsigned long *remain,
+                             unsigned long *max, unsigned char *sk)
 {
     unsigned char aux_data[10240];
     struct hss_working_key *w = hss_load_private_key(NULL, sk, 
