@@ -3,7 +3,7 @@
 
 #include "common_defs.h"
 
-#define NIST_LEVEL 2
+#define NIST_LEVEL 4
 #define DEBUG 0
 
 #define LMS_PUBLICKEYBYTES 60
@@ -18,6 +18,8 @@
 #define LMS_H15H10W8_BYTES 3124
 
 #define LMS_H15H15W8_BYTES 3284
+
+#define LMS_H10H10H15W8_BYTES 4632
 
 #define CRYPTO_PUBLIC_KEY LMS_PUBLICKEYBYTES
 #define CRYPTO_SECRET_KEY LMS_SECRETKEYBYTES
@@ -67,7 +69,9 @@
 +--------------+------------+---------+-------------+
 | ParmSet      | KeyGenSize | SigSize | #Signatures |
 +--------------+------------+---------+-------------+
-| 15/15, w=8   | (60, 64)   | 3284    | 2^30 -1     |
+| 15/15, w=8   | (60, 64)   | 3284    | 2^30 -1     | 1m2
+| 10/20, w=8   | (60, 64)   | 
+| 5/10/15 , w=8| (60, 64)   | 4632    | 2^35 -1     | 25.2
 */
 #define PARAM_LEVEL 2
 #define PARAM_LM_HEIGHT0 LMS_SHA256_N32_H15
@@ -76,8 +80,25 @@
 
 #define CRYPTO_BYTES LMS_H15H15W8_BYTES
 
+#elif NIST_LEVEL == 4
+/*
++-----------------+------------+---------+-------------+
+| ParmSet         | KeyGenSize | SigSize | #Signatures |
++-----------------+------------+---------+-------------+
+| 10/10/15, w=8   | (60, 64)   | 4632    | 2^35 -1     | 26.7
+| 5/10/20 , w=8   | (60, 64)   | 4632    | 2^35 -1     | 13m31
+| 5/15/15 , w=8   | (60, 64)   | 4632    | 2^35 -1     | 51.1
+*/
+#define PARAM_LEVEL 3
+#define PARAM_LM_HEIGHT0 LMS_SHA256_N32_H10
+#define PARAM_LM_HEIGHT1 LMS_SHA256_N32_H10
+#define PARAM_LM_HEIGHT2 LMS_SHA256_N32_H15
+#define PARAM_OTS_WIDTH LMOTS_SHA256_N32_W8
+
+#define CRYPTO_BYTES LMS_H10H10H15W8_BYTES
+
 #else
-#error "Unspecified NIST_LEVEL {1,2,3}"
+#error "Unspecified NIST_LEVEL {1,2,3,4}"
 
 #endif
 

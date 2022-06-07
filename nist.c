@@ -42,9 +42,12 @@ int crypto_sign_keypair(unsigned char *pk, unsigned char *sk)
 #if NIST_LEVEL == 1
     param_set_t lm_type[] = {PARAM_LM_HEIGHT};
     param_set_t ots_type[] = {PARAM_OTS_WIDTH};
-#else
+#elif NIST_LEVEL < 4
     param_set_t lm_type[] = {PARAM_LM_HEIGHT0, PARAM_LM_HEIGHT1};
     param_set_t ots_type[] = {PARAM_OTS_WIDTH, PARAM_OTS_WIDTH};
+#else
+    param_set_t lm_type[] = {PARAM_LM_HEIGHT0, PARAM_LM_HEIGHT1, PARAM_LM_HEIGHT2};
+    param_set_t ots_type[] = {PARAM_OTS_WIDTH, PARAM_OTS_WIDTH, PARAM_OTS_WIDTH};
 #endif
     unsigned levels = PARAM_LEVEL;
     /* Generate keypair using LMS API */
@@ -126,6 +129,7 @@ int crypto_sign(unsigned char *sig, unsigned long *siglen,
 #if DEUBG
     bool success = hss_generate_signature(working_key, NULL, sk, m, mlen, sig, sig_len, &info);
     printf("error = %d\n", info.error_code);
+    printf("siglen = %ld\n", sig_len);
 #else
     bool success = hss_generate_signature(working_key, NULL, sk, m, mlen, sig, sig_len, 0);
 #endif
