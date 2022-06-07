@@ -1,6 +1,7 @@
 #include <oqs/rand.h>
 #include "api.h"
 #include "hss.h"
+#include "hss_verify.h"
 #include "params.h"
 
 /*************************************************
@@ -41,27 +42,86 @@ int crypto_sign_keypair(uint8_t *pk, size_t *pklen, uint8_t *sk, size_t *sklen)
     size_t aux_data_len = hss_get_aux_data_len(aux_data_max_length, levels, lm_type, ots_type);
     unsigned char *aux_data = malloc(aux_data_len);
     
-    int pubkey_size = hss_get_public_key_len(levels, lm_type, ots_type);
-    int privkey_size = hss_get_private_key_len(levels, lm_type, ots_type);
-    bool ret = hss_generate_private_key(OQS_randombytes, levels, lm_type, ots_type,
-                             NULL, sk, pk, pubkey_size, aux_data, aux_data_len, NULL);
+    size_t pubkey_size = hss_get_public_key_len(levels, lm_type, ots_type);
+    size_t privkey_size = hss_get_private_key_len(levels, lm_type, ots_type);
+    bool success = hss_generate_private_key(OQS_randombytes, levels, lm_type, ots_type,
+                             NULL, sk, pk, pubkey_size, aux_data, aux_data_len, 0);
 
     /* Branchless if-else magic */
-    *pklen = (-ret) & (pubkey_size);
-    *sklen = (-ret) & (privkey_size);
+    *pklen = (-success) & (pubkey_size);
+    *sklen = (-success) & (privkey_size);
 
     free(aux_data);
+    if (!success)
+    {
+        printf( "Error generating keypair\n" );
+        return OQS_ERROR;
+    }
+    return OQS_SUCCESS;
+}
+
+/* 
+ * Sign a message
+ */
+int crypto_sign(uint8_t *sig, size_t *siglen,
+                const uint8_t *m, size_t mlen, const uint8_t *sk)
+{
+    unsigned char aux_data[10240];
+    struct hss_working_key *working_key = hss_load_private_key(NULL, sk, 
+                                100000, aux_data, sizeof aux_data, 0);
+    
+    if (!working_key) {
+        printf( "Error loading working key\n" );
+        return OQS_ERROR;
+    }
+
+    bool success = hss_generate_signature(working_key, NULL, NULL, m, mlen, sig, *siglen, 0);
+     
+    hss_free_working_key(working_key);
+
+    if (!success)
+    {
+        printf( "Error generating signature\n" );
+        return OQS_ERROR;
+    }
 
     return OQS_SUCCESS;
 }
 
-int crypto_sign(uint8_t *sig, size_t *siglen,
-                const uint8_t *m, size_t mlen, const uint8_t *sk)
-{
-    
-}
-
+/* 
+ * Verify a signed message
+ */
 int crypto_sign_open(uint8_t *m, size_t *mlen,
                      const uint8_t *sm, size_t smlen, const uint8_t *pk)
 {
+    bool success = hss_validate_signature(pk, m, *mlen, sm, smlen, 0);
+
+    if (!success)
+    {
+        return OQS_ERROR;
+    }
+    return OQS_SUCCESS;
+}
+
+/* 
+ * Return the number of remaining signatures and maximum possibile signatures
+ * The total number of used signatures can be the result of remaining and maximu. 
+ * Input is secrect key. 
+ * 
+ */
+int crypto_remain_signatures(uint8_t *sk, uint64_t *remain, uint64_t *max)
+{
+    unsigned char aux_data[10240];
+    struct hss_working_key *w = hss_load_private_key(NULL, sk, 
+                                100000, aux_data, sizeof aux_data, 0);
+    
+    if (!w) {
+        printf( "Error loading working key\n" );
+        return OQS_ERROR;
+    }
+    *remain = w->reserve_count; 
+    *max = w->max_count;
+
+    hss_free_working_key(w);
+    return OQS_SUCCESS;
 }
