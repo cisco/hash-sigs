@@ -37,8 +37,8 @@ int main(void)
         printf("    Unable to generate signature\n");
         return 1;
     }
-    // print_hex(m, mlen, "message");
-    // print_hex(sig, siglen, "signature");
+    print_hex(m, mlen, "message");
+    print_hex(sig, siglen, "signature");
 
     // Verification test
     ret = crypto_sign_open(m, &mlen, sig, siglen, pk);
@@ -51,7 +51,7 @@ int main(void)
     print_hex(sk, sklen, "sk");
     printf("siglen = %ld, mlen = %ld\n", siglen, mlen);
 
-    // // Remaining signature test
+    // Remaining signature test
     unsigned long remain = 0, max = 0;
     ret = crypto_remain_signatures(&remain, &max, sk);
 

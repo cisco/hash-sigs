@@ -69,12 +69,8 @@ int crypto_sign_keypair(unsigned char *pk, unsigned char *sk)
     printf("error = %d\n", info.error_code);
 #else
     bool success = hss_generate_private_key(LMS_randombytes, levels, lm_type, ots_type,
-                                            NULL, sk, pk, pubkey_size, aux_data, aux_data_len, 0);
+                                            NULL, sk, pk, pubkey_size, aux_data, aux_data_len, NULL);
 #endif
-
-    /* Branchless if-else magic */
-    // *pklen = (-success) & (pubkey_size);
-    // *sklen = (-success) & (privkey_size);
 
     free(aux_data);
     if (!success)
@@ -111,7 +107,7 @@ int crypto_sign(unsigned char *sig, unsigned long *siglen,
     printf("error = %d\n", info.error_code);
 #else
     struct hss_working_key *working_key = hss_load_private_key(NULL, sk,
-                                                               100000, aux_data, sizeof aux_data, 0);
+                                                               100000, aux_data, sizeof aux_data, NULL);
 #endif
 
     if (!working_key)
@@ -131,7 +127,7 @@ int crypto_sign(unsigned char *sig, unsigned long *siglen,
     printf("error = %d\n", info.error_code);
     printf("siglen = %ld\n", sig_len);
 #else
-    bool success = hss_generate_signature(working_key, NULL, sk, m, mlen, sig, sig_len, 0);
+    bool success = hss_generate_signature(working_key, NULL, sk, m, mlen, sig, sig_len, NULL);
 #endif
 
     hss_free_working_key(working_key);
@@ -189,7 +185,7 @@ int crypto_remain_signatures(unsigned long *remain,
 {
     unsigned char aux_data[10240];
     struct hss_working_key *working_key = hss_load_private_key(NULL, sk, 10240,
-                                                               aux_data, sizeof aux_data, 0);
+                                                               aux_data, sizeof aux_data, NULL);
 
     if (!working_key)
     {

@@ -2,14 +2,14 @@ LDFLAGS=-L/opt/homebrew/opt/openssl@3/lib
 CPPFLAGS=-I/opt/homebrew/opt/openssl@3/include
 AR = /usr/bin/ar
 CC = /usr/bin/gcc 
-CFLAGS = -Wall -O3 $(LDFLAGS) $(CPPFLAGS) 
+CFLAGS = -Wall -O3 $(LDFLAGS) $(CPPFLAGS)
 
 all: hss_lib.a \
      hss_lib_thread.a \
      hss_verify.a \
      demo \
      test_hss \
-	 nist_test
+     nist_test
 
 hss_lib.a: hss.o hss_alloc.o hss_aux.o hss_common.o \
      hss_compute.o hss_generate.o hss_keygen.o hss_param.o hss_reserve.o \
@@ -37,7 +37,6 @@ hss_verify.a: hss_verify.o hss_verify_inc.o hss_common.o hss_thread_single.o \
 demo: demo.c hss_lib_thread.a
 	$(CC) $(CFLAGS) demo.c hss_lib_thread.a -lcrypto -lpthread -o demo
 
-# I write these
 nist_test: nist.c nist_test.c hss_lib_thread.a params.h
 	$(CC) $(CFLAGS) nist_test.c hss_lib_thread.a -lcrypto -lpthread -loqs -o $@
 
@@ -122,7 +121,6 @@ hash.o: hash.c hash.h sha256.h hss_zeroize.h
 sha256.o: sha256.c sha256.h endian.h
 	$(CC) $(CFLAGS) -c sha256.c -o $@
 
-# I write these
 nist.o: nist.c params.h
 	$(CC) $(CFLAGS) -c nist.c -llibops -o $@
 

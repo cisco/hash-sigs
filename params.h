@@ -3,7 +3,7 @@
 
 #include "common_defs.h"
 
-#define NIST_LEVEL 4
+#define NIST_LEVEL 1
 #define DEBUG 0
 
 #define LMS_PUBLICKEYBYTES 60
