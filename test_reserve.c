@@ -80,8 +80,8 @@ bool test_reserve(bool fast_flag, bool quiet_flag) {
         /* d=1 makes it esay to extract the sequence number from */
         /* the signature */
     int default_d = 1;
-    param_set_t default_lm_type[1] = { LMS_SHA256_N32_H10 };
-    param_set_t default_ots_type[1] = { LMOTS_SHA256_N32_W2 };
+    param_set_t default_lm_type[1] = { LMS_SHA256_N24_H10 };
+    param_set_t default_ots_type[1] = { LMOTS_SHA256_N24_W2 };
 
     for (do_manual_res = 0; do_manual_res <= 1; do_manual_res++) {
         /* In full mode, we also run the tests skipping all manual */

@@ -46,19 +46,15 @@
 /* This creates a seed derivation object */
 bool hss_seed_derive_init( struct seed_derive *derive,
                  param_set_t lm, param_set_t ots,
-                 const unsigned char *I, const unsigned char *seed ) {
+                 const unsigned char *I,
+                 const unsigned char *seed, size_t seed_len ) {
     derive->I = I;
     derive->master_seed = seed;
     /* q, j will be set later */
 #if SECRET_METHOD == 2
+    derive->master_seed_len = seed_len;
     /* Grab the hash function to use */
     if (!lm_look_up_parameter_set(lm, &derive->hash, &derive->m, 0)) {
-        return false;
-    }
-
-    /* Note: currently, this assumes that the hash length is always 256 */
-    /* bits; error out if that isn't the case */
-    if (derive->m != SEED_LEN) {
         return false;
     }
 #endif
@@ -79,24 +75,39 @@ void hss_seed_derive_set_j( struct seed_derive *derive, unsigned j ) {
 
 /* This derives the current seed value.  If increment_j is set, it'll then */
 /* reset the object to the next j value */
-void hss_seed_derive( unsigned char *seed, struct seed_derive *derive,
+void hss_seed_derive( unsigned char *seed, size_t output_len, struct seed_derive *derive,
                  bool increment_j ) {
+#if SECRET_METHOD == 2
+    int hash = derive->hash;    /* Use the parameter set's hash function */
+    unsigned m = derive->m;     /* And get it's length */
+    unsigned master_seed_len = derive->master_seed_len;
+#else
+    int hash = HASH;            /* Use our standard one */
+    unsigned master_seed_len = SEED_LEN;
+#endif
+
     unsigned char buffer[ PRG_MAX_LEN ];
     memcpy( buffer + PRG_I, derive->I, I_LEN );
     put_bigendian( buffer + PRG_Q, derive->q, 4 );
     put_bigendian( buffer + PRG_J, derive->j, 2 );
     buffer[PRG_FF] = 0xff;
-    memcpy( buffer + PRG_SEED, derive->master_seed, SEED_LEN );
+    memcpy( buffer + PRG_SEED, derive->master_seed, master_seed_len );
+
+    /* Hash the random string, place the result into the same buffer (no */
+    /* reason to dirty more than one pan) */
+    hss_hash( buffer, hash, buffer, PRG_LEN(master_seed_len) );
 
 #if SECRET_METHOD == 2
-    int hash = derive->hash;    /* Our the parameter set's hash function */
-#else
-    int hash = HASH;            /* Use our standard one */
+    if (output_len > m) {
+        /* The length wanted is more than the number of bytes the hash gives us */
+        /* Pad the rest of the seed with 0's */
+        memset( seed + m, 0, output_len - m );
+        output_len = m;
+    }
 #endif
+    memcpy( seed, buffer, output_len );
 
-    hss_hash( seed, hash, buffer, PRG_LEN(SEED_LEN) );
-
-    hss_zeroize( buffer, PRG_LEN(SEED_LEN) );
+    hss_zeroize( buffer, PRG_LEN(MAX_SEED_LEN) );
 
     if (increment_j) derive->j += 1;
 }
@@ -128,7 +139,8 @@ static unsigned my_log2(merkle_index_t n);
 /* This creates a seed derivation object */
 bool hss_seed_derive_init( struct seed_derive *derive,
                  param_set_t lm, param_set_t ots,
-                 const unsigned char *I, const unsigned char *seed ) {
+                 const unsigned char *I,
+                 const unsigned char *seed, size_t seed_len ) {
     derive->I = I;
     derive->master_seed = seed;
 
@@ -264,9 +276,9 @@ void hss_seed_derive_set_j( struct seed_derive *derive, unsigned j ) {
 /* it); we just need to copy it to the buffer) */
 /* If increment_j is set, it'll then reset the object to the next j value */
 /* (which means incrementally computing that path) */
-void hss_seed_derive( unsigned char *seed, struct seed_derive *derive,
-                      bool increment_j ) {
-    memcpy( seed, derive->j_seed[ derive->j_levels - 1], SEED_LEN );
+void hss_seed_derive( unsigned char *seed, size_t output_len,
+                      struct seed_derive *derive, bool increment_j ) {
+    memcpy( seed, derive->j_seed[ derive->j_levels - 1], output_len );
 
     if (increment_j) {
         int i;

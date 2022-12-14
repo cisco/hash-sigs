@@ -107,7 +107,7 @@ bool hss_generate_private_key(
         return false;
     }
 
-    unsigned char private_key[ PRIVATE_KEY_LEN ];
+    unsigned char private_key[ PRIVATE_KEY_LEN(MAX_SEED_LEN) ];
 
         /* First step: format the private key */
     put_bigendian( private_key + PRIVATE_KEY_INDEX, 0,
@@ -119,14 +119,15 @@ bool hss_generate_private_key(
         return false;
     }
     if (!(*generate_random)( private_key + PRIVATE_KEY_SEED,
-                   PRIVATE_KEY_SEED_LEN )) {
+                   PRIVATE_KEY_SEED_LEN(size_hash) )) {
         info->error_code = hss_error_bad_randomness;
         return false;
     }
 
         /* Now make sure that the private key is written to NVRAM */
     if (update_private_key) {
-        if (!(*update_private_key)( private_key, PRIVATE_KEY_LEN, context)) {
+        if (!(*update_private_key)( private_key, PRIVATE_KEY_LEN(size_hash),
+                                    context)) {
             /* initial write of private key didn't take */
             info->error_code = hss_error_private_key_write_failed;
             hss_zeroize( private_key, sizeof private_key );
@@ -139,7 +140,7 @@ bool hss_generate_private_key(
             hss_zeroize( private_key, sizeof private_key );
             return false;
         }
-        memcpy( context, private_key, PRIVATE_KEY_LEN );
+        memcpy( context, private_key, PRIVATE_KEY_LEN(size_hash) );
     }
 
     /* Figure out what would be the best trade-off for the aux level */
@@ -155,8 +156,9 @@ bool hss_generate_private_key(
     }
 
     unsigned char I[I_LEN];
-    unsigned char seed[SEED_LEN];
-    if (!hss_generate_root_seed_I_value( seed, I, private_key+PRIVATE_KEY_SEED)) {
+    unsigned char seed[MAX_SEED_LEN];
+    if (!hss_generate_root_seed_I_value( seed, I, private_key+PRIVATE_KEY_SEED,
+                                    lm_type[0], lm_ots_type[0])) {
         info->error_code = hss_error_internal;
         hss_zeroize( private_key, sizeof private_key );
         return false;
@@ -271,9 +273,9 @@ bool hss_generate_private_key(
         info->error_code = got_error;
         hss_zeroize( private_key, sizeof private_key );
         if (update_private_key) {
-            (void)(*update_private_key)(private_key, PRIVATE_KEY_LEN, context);
+            (void)(*update_private_key)(private_key, PRIVATE_KEY_LEN(size_hash), context);
         } else {
-            hss_zeroize( context, PRIVATE_KEY_LEN );
+            hss_zeroize( context, PRIVATE_KEY_LEN(size_hash) );
         }
         free(temp_buffer);
         return false;
@@ -361,5 +363,11 @@ size_t hss_get_private_key_len(unsigned levels,
                    const param_set_t *lm_ots_type) {
        /* A private key is a 'public object'?  Yes, in the sense that we */
        /* export it outside this module */
-    return PRIVATE_KEY_LEN;
+#if SECRET_METHOD == 2
+    unsigned hash0_len;
+    if (!lm_look_up_parameter_set( lm_type[0], 0, &hash0_len, 0 )) {
+        return 0;
+    }
+#endif
+    return PRIVATE_KEY_LEN(hash0_len);
 }

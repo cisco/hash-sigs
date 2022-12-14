@@ -8,6 +8,7 @@
 #include "hss.h"
 #include "hss_internal.h"
 #include "lm_common.h"
+#include "lm_ots_common.h"
 
 #define MALLOC_OVERHEAD  8   /* Our simplistic model about the overhead */
                              /* that malloc takes up is that it adds 8 */
@@ -451,6 +452,8 @@ printf( "Allocation = %ld\n", initial_mem_target - mem_target + best_mem ); /* D
         tree->level = h0;
         tree->h = level_hash[i];
         tree->hash_size = hash_size[i];
+        lm_ots_look_up_parameter_set( lm_ots_type[i], &tree->lms_hash,
+                                      &tree->lms_hash_size, 0, 0, 0 );
         tree->lm_type = lm_type[i];
         tree->lm_ots_type = lm_ots_type[i];
         /* We'll initialize current_index from the private key */

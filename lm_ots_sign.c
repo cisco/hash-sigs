@@ -51,7 +51,7 @@ bool lm_ots_generate_public_key(
     hss_seed_derive_set_j( seed, 0 );
 
     for (i=0; i<p; i++) {
-        hss_seed_derive( buf + ITER_PREV, seed, i < p-1 );
+        hss_seed_derive( buf + ITER_PREV, n, seed, i < p-1 );
         put_bigendian( buf + ITER_K, i, 2 );
         /* We'll place j in the buffer below */
         for (j=0; j < (1<<w) - 1; j++) {
@@ -77,13 +77,9 @@ bool lm_ots_generate_public_key(
  */
 void lm_ots_generate_randomizer(unsigned char *c, unsigned n,
                                 struct seed_derive *seed) {
-    unsigned char randomizer[ SEED_LEN ];
-
     hss_seed_derive_set_j( seed, SEED_RANDOMIZER_INDEX );
 
-    hss_seed_derive( randomizer, seed, false );
-
-    memcpy( c, randomizer, n );
+    hss_seed_derive( c, n, seed, false );
 }
 
 
@@ -151,7 +147,7 @@ bool lm_ots_generate_signature(
     hss_seed_derive_set_j( seed, 0 );
     for (i=0; i<p; i++) {
         put_bigendian( tmp + ITER_K, i, 2 );
-        hss_seed_derive( tmp + ITER_PREV, seed, i<p-1 );
+        hss_seed_derive( tmp + ITER_PREV, n, seed, i<p-1 );
         unsigned a = lm_ots_coef( Q, i, w );
         unsigned j;
         for (j=0; j<a; j++) {
