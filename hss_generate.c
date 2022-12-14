@@ -348,7 +348,8 @@ bool hss_generate_working_key(
         if (i == 0) {
             /* The root seed, I value is derived from the secret key */
             hss_generate_root_seed_I_value( tree->seed, tree->I,
-                                            private_key+PRIVATE_KEY_SEED );
+                                            private_key+PRIVATE_KEY_SEED,
+			                    tree->lm_type, tree->lm_ots_type );
             /* We don't use the I_next value */
         } else {
             /* The seed, I is derived from the parent's values */
@@ -363,7 +364,7 @@ bool hss_generate_working_key(
                                              parent->seed,  len_parent_seed,
                                              parent->I, len_child_seed,
                                              index, parent->lm_type,
-                                             parent->lm_ots_type ) {
+                                             parent->lm_ots_type )) {
                 info->error_code = hss_error_internal;
                 goto failed;
             }
@@ -375,7 +376,7 @@ bool hss_generate_working_key(
                                             parent->seed_next, len_parent_seed,
                                             parent->I_next, len_child_seed,
                                             0, parent->lm_type, 
-                                            parent->lm_ots_type) {
+                                            parent->lm_ots_type)) {
                     info->error_code = hss_error_internal;
                     goto failed;
                 }
@@ -385,7 +386,7 @@ bool hss_generate_working_key(
                                             parent->seed,  len_parent_seed,
                                             parent->I, len_child_seed,
                                             index+1, parent->lm_type,
-                                            parent->lm_ots_type) {
+                                            parent->lm_ots_type)) {
                     info->error_code = hss_error_internal;
                     goto failed;
                 }

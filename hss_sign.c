@@ -685,7 +685,7 @@ done_advancing:
                                        parent->seed_next, parent_seed_len,
                                        parent->I_next, child_seed_len, 0,
                                        parent->lm_type,
-                                       parent->lm_ots_type) {
+                                       parent->lm_ots_type)) {
                 info->error_code = hss_error_internal;
                 goto failed;
             }
@@ -694,7 +694,7 @@ done_advancing:
                                        parent->seed, parent_seed_len,
                                        parent->I, child_seed_len, index+1,
                                        parent->lm_type,
-                                       parent->lm_ots_type) {
+                                       parent->lm_ots_type)) {
                 info->error_code = hss_error_internal;
                 goto failed;
             }
