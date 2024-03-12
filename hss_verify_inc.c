@@ -116,11 +116,6 @@ bool hss_validate_signature_init(
     ctx->signature_offset = signature - orig_signature;
     ctx->signature_len = signature_len;
 
-    /* We have the public key in front of us; stash a copy */
-    /* Right now, we have a fixed length public key */
-    /* If that changes, we'll need to investigate the parmaeter set */
-    memcpy( ctx->final_public_key, public_key, 8 + I_LEN + MAX_HASH );
-
     /* Now, initialize the context */
     param_set_t ots_type = get_bigendian( public_key+4, 4 );
 
@@ -132,6 +127,12 @@ bool hss_validate_signature_init(
         return false;
     }
     ctx->h = h;
+
+    /* We have the public key in front of us; stash a copy */
+    /* Right now, we have a fixed length public key */
+    /* If that changes, we'll need to investigate the parmaeter set */
+    memcpy( ctx->final_public_key, public_key, 8 + I_LEN + n );
+
     hss_init_hash_context( h, &ctx->hash_ctx );
     {
         unsigned char prefix[ MESG_PREFIX_MAXLEN ];
