@@ -129,8 +129,6 @@ bool hss_validate_signature_init(
     ctx->h = h;
 
     /* We have the public key in front of us; stash a copy */
-    /* Right now, we have a fixed length public key */
-    /* If that changes, we'll need to investigate the parmaeter set */
     memcpy( ctx->final_public_key, public_key, 8 + I_LEN + n );
 
     hss_init_hash_context( h, &ctx->hash_ctx );
