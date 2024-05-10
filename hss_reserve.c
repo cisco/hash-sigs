@@ -101,7 +101,10 @@ bool hss_advance_count(struct hss_working_key *w, sequence_t cur_count,
 /*
  * This will make sure that (at least) N signatures are reserved; that is, we
  * won't need to actually call the update function for the next N signatures
- * generated
+ * generated.
+ * This also has the effect of minimizing the changes of a signature generation
+ * failure will occur (possibly because of an update failure) in the next
+ * N signatures.
  *
  * This can be useful if the update_private_key function is expensive.
  *
@@ -122,7 +125,7 @@ bool hss_reserve_signature(
         return false;
     }
     if (w->status != hss_error_none) {
-        info->error_code = w->status;;
+        info->error_code = w->status;
         return false;
     }
 
@@ -161,8 +164,9 @@ bool hss_reserve_signature(
                      /* setting would be (if we accept the reservation) */
     if (current_count > w->max_count - sigs_to_reserve) {
         /* Not that many sigantures left */
-        /* Reserve as many as we can */
-        new_reserve_count = w->max_count;
+	/* We can't promise to be able to generate that many signatures */
+        info->error_code = hss_error_not_that_many_sigs_left;
+        return false;
     } else {
         new_reserve_count = current_count + sigs_to_reserve;
     }

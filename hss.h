@@ -262,10 +262,12 @@ bool hss_generate_working_key(
  * won't need to actually call the update function for the next N signatures
  * generated
  *
- * This can be useful if the update_private_key function is expensive.
+ * This can be useful if the update_private_key function is expensive, or if
+ * we happen to know if it will be off-line during the next N signatures.
  *
  * Note that if, N (or more) signatures are already reserved, this won't do
- * anything.
+ * anything.  And, if there aren't N more signatures available, this will
+ * fail.
  */
 bool hss_reserve_signature(
     struct hss_working_key *w,
