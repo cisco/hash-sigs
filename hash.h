@@ -15,6 +15,7 @@
  */
 enum {
     HASH_SHA256 = 1,    /* SHA256 */
+    HASH_SHA256_24 = 2, /* SHA256 truncated to 24 bytes */
 };
 
 union hash_context {

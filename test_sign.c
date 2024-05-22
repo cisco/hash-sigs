@@ -33,11 +33,34 @@ static unsigned long get_int(const unsigned char *p) {
 
 static int lookup_h(unsigned long val) {
     switch (val) {
-    case LMS_SHA256_N32_H5:  return 5;
-    case LMS_SHA256_N32_H10: return 10;
-    case LMS_SHA256_N32_H15: return 15;
-    case LMS_SHA256_N32_H20: return 20;
-    case LMS_SHA256_N32_H25: return 25;
+    case LMS_SHA256_N32_H5:
+    case LMS_SHA256_N24_H5: return 5;
+    case LMS_SHA256_N32_H10:
+    case LMS_SHA256_N24_H10: return 10;
+    case LMS_SHA256_N32_H15:
+    case LMS_SHA256_N24_H15: return 15;
+    case LMS_SHA256_N32_H20:
+    case LMS_SHA256_N24_H20: return 20;
+    case LMS_SHA256_N32_H25:
+    case LMS_SHA256_N24_H25: return 25;
+    default: return 0;
+    }
+}
+
+static int lookup_n(unsigned long val) {
+    switch (val) {
+    case LMS_SHA256_N32_H5:
+    case LMS_SHA256_N32_H10:
+    case LMS_SHA256_N32_H15:
+    case LMS_SHA256_N32_H20:
+    case LMS_SHA256_N32_H25:
+        return 32;
+    case LMS_SHA256_N24_H5:
+    case LMS_SHA256_N24_H10:
+    case LMS_SHA256_N24_H15:
+    case LMS_SHA256_N24_H20:
+    case LMS_SHA256_N24_H25:
+        return 24;
     default: return 0;
     }
 }
@@ -47,27 +70,52 @@ static bool test_parm( int d, long num_sig, ... );
 bool test_sign(bool fast_flag, bool quiet_flag) {
 
     /* Test out various parameter sets */
-    if (!test_parm( 1, 32, LMS_SHA256_N32_H5, LMOTS_SHA256_N32_W1 )) return false;
-    if (!test_parm( 1, 32, LMS_SHA256_N32_H5, LMOTS_SHA256_N32_W2 )) return false;
-    if (!test_parm( 1, 32, LMS_SHA256_N32_H5, LMOTS_SHA256_N32_W4 )) return false;
-    if (!test_parm( 1, 32, LMS_SHA256_N32_H5, LMOTS_SHA256_N32_W8 )) return false;
-    if (!test_parm( 1, 1024, LMS_SHA256_N32_H10, LMOTS_SHA256_N32_W2 )) return false;
-    if (!test_parm( 2, 1024, LMS_SHA256_N32_H5, LMOTS_SHA256_N32_W4,
-                             LMS_SHA256_N32_H5, LMOTS_SHA256_N32_W2 )) return false;
-    if (!test_parm( 1, 32768, LMS_SHA256_N32_H15, LMOTS_SHA256_N32_W2 )) return false;
-    if (!test_parm( 2, 32768, LMS_SHA256_N32_H10, LMOTS_SHA256_N32_W4,
-                             LMS_SHA256_N32_H5, LMOTS_SHA256_N32_W2 )) return false;
-    if (!test_parm( 2, 32768, LMS_SHA256_N32_H5, LMOTS_SHA256_N32_W4,
-                             LMS_SHA256_N32_H10, LMOTS_SHA256_N32_W2 )) return false;
-    if (!test_parm( 3, 32768, LMS_SHA256_N32_H5, LMOTS_SHA256_N32_W4,
-                             LMS_SHA256_N32_H5, LMOTS_SHA256_N32_W4,
-                             LMS_SHA256_N32_H5, LMOTS_SHA256_N32_W2 )) return false;
+    typedef unsigned long ul;
+    if (!test_parm( 1, 32, (ul)LMS_SHA256_N32_H5, (ul)LMOTS_SHA256_N32_W1 )) return false;
+    if (!test_parm( 1, 32, (ul)LMS_SHA256_N24_H5, (ul)LMOTS_SHA256_N24_W1 )) return false;
+    if (!test_parm( 1, 32, (ul)LMS_SHA256_N32_H5, (ul)LMOTS_SHA256_N32_W2 )) return false;
+    if (!test_parm( 1, 32, (ul)LMS_SHA256_N24_H5, (ul)LMOTS_SHA256_N24_W2 )) return false;
+    if (!test_parm( 1, 32, (ul)LMS_SHA256_N32_H5, (ul)LMOTS_SHA256_N32_W4 )) return false;
+    if (!test_parm( 1, 32, (ul)LMS_SHA256_N24_H5, (ul)LMOTS_SHA256_N24_W4 )) return false;
+    if (!test_parm( 1, 32, (ul)LMS_SHA256_N32_H5, (ul)LMOTS_SHA256_N32_W8 )) return false;
+    if (!test_parm( 1, 32, (ul)LMS_SHA256_N24_H5, (ul)LMOTS_SHA256_N24_W8 )) return false;
+    if (!test_parm( 1, 1024, (ul)LMS_SHA256_N32_H10, (ul)LMOTS_SHA256_N32_W2 )) return false;
+    if (!test_parm( 1, 1024, (ul)LMS_SHA256_N24_H10, (ul)LMOTS_SHA256_N24_W2 )) return false;
+    if (!test_parm( 1, 1024, (ul)LMS_SHA256_N32_H10, (ul)LMOTS_SHA256_N24_W2 )) return false;
+    if (!test_parm( 1, 1024, (ul)LMS_SHA256_N24_H10, (ul)LMOTS_SHA256_N32_W2 )) return false;
+    if (!test_parm( 2, 1024, (ul)LMS_SHA256_N32_H5, (ul)LMOTS_SHA256_N32_W4,
+                             (ul)LMS_SHA256_N32_H5, (ul)LMOTS_SHA256_N32_W2 )) return false;
+    if (!test_parm( 2, 1024, (ul)LMS_SHA256_N24_H5, (ul)LMOTS_SHA256_N24_W4,
+                             (ul)LMS_SHA256_N24_H5, (ul)LMOTS_SHA256_N24_W2 )) return false;
+    if (!test_parm( 2, 1024, (ul)LMS_SHA256_N32_H5, (ul)LMOTS_SHA256_N32_W4,
+                             (ul)LMS_SHA256_N24_H5, (ul)LMOTS_SHA256_N24_W2 )) return false;
+    if (!test_parm( 2, 1024, (ul)LMS_SHA256_N24_H5, (ul)LMOTS_SHA256_N24_W4,
+                             (ul)LMS_SHA256_N32_H5, (ul)LMOTS_SHA256_N32_W2 )) return false;
+    if (!test_parm( 1, 32768, (ul)LMS_SHA256_N32_H15, (ul)LMOTS_SHA256_N32_W2 )) return false;
+    if (!test_parm( 1, 32768, (ul)LMS_SHA256_N24_H15, (ul)LMOTS_SHA256_N24_W2 )) return false;
+    if (!fast_flag) {
+        if (!test_parm( 2, 32768, (ul)LMS_SHA256_N32_H10, (ul)LMOTS_SHA256_N32_W4,
+                             (ul)LMS_SHA256_N32_H5, (ul)LMOTS_SHA256_N32_W2 )) return false;
+        if (!test_parm( 2, 32768, (ul)LMS_SHA256_N24_H10, (ul)LMOTS_SHA256_N24_W4,
+                             (ul)LMS_SHA256_N24_H5, (ul)LMOTS_SHA256_N24_W2 )) return false;
+        if (!test_parm( 2, 32768, (ul)LMS_SHA256_N32_H5, (ul)LMOTS_SHA256_N32_W4,
+                             (ul)LMS_SHA256_N32_H10, (ul)LMOTS_SHA256_N32_W2 )) return false;
+        if (!test_parm( 2, 32768, (ul)LMS_SHA256_N24_H5, (ul)LMOTS_SHA256_N24_W4,
+                             (ul)LMS_SHA256_N24_H10, (ul)LMOTS_SHA256_N24_W2 )) return false;
+        if (!test_parm( 3, 32768, (ul)LMS_SHA256_N32_H5, (ul)LMOTS_SHA256_N32_W4,
+                             (ul)LMS_SHA256_N32_H5, (ul)LMOTS_SHA256_N32_W4,
+                             (ul)LMS_SHA256_N32_H5, (ul)LMOTS_SHA256_N32_W2 )) return false;
+        if (!test_parm( 3, 32768, (ul)LMS_SHA256_N24_H5, (ul)LMOTS_SHA256_N24_W4,
+                             (ul)LMS_SHA256_N24_H5, (ul)LMOTS_SHA256_N24_W4,
+                             (ul)LMS_SHA256_N24_H5, (ul)LMOTS_SHA256_N24_W2 )) return false;
+    }
 
     return true;
 }
 
 static bool test_parm( int d, long num_sig, ... ) {
-    if (d < 1 || d > 8) return false;   /* A different test suite checks that out */
+    if (d < 1 || d > 8) return false;   /* A different test suite checks */
+                                        /* out illegal numbers of levels */
 
     /* Gather up the parameter set */
     param_set_t lm_type[8];
@@ -77,8 +125,8 @@ static bool test_parm( int d, long num_sig, ... ) {
     va_start(arg, num_sig);
     int i;
     for (i=0; i<d; i++) {
-        lm_type[i] = va_arg( arg, int );
-        ots_type[i] = va_arg( arg, int );
+        lm_type[i] = va_arg( arg, unsigned long );
+        ots_type[i] = va_arg( arg, unsigned long );
     }
     va_end(arg);
 
@@ -86,22 +134,18 @@ static bool test_parm( int d, long num_sig, ... ) {
     int pubkey_size = hss_get_public_key_len( d, lm_type, ots_type );
     int sig_size = hss_get_signature_len( d, lm_type, ots_type );
     int privkey_size = hss_get_private_key_len( d, lm_type, ots_type );
-    if (!pubkey_size || pubkey_size > HSS_MAX_PUBLIC_KEY_LEN ||
-        !sig_size ||
-        !privkey_size || privkey_size > HSS_MAX_PRIVATE_KEY_LEN) {
+    if (!pubkey_size || !sig_size || !privkey_size) {
         printf( "Internal error: bad parm set\n" );
         return false;
     }
-    unsigned char pubkey[HSS_MAX_PUBLIC_KEY_LEN];
-    unsigned char *sig = malloc(sig_size);
-    if (!sig) return false;
-    unsigned char privkey[HSS_MAX_PRIVATE_KEY_LEN];
+    unsigned char pubkey[pubkey_size];
+    unsigned char sig[sig_size];
+    unsigned char privkey[privkey_size];
 
     if (!hss_generate_private_key( rand_1, d, lm_type, ots_type,
                                    NULL, privkey, pubkey, pubkey_size,
                                    NULL, 0, 0)) {
         printf( "Pubkey gen failure\n" );
-        free(sig);
         return false;
     }
 
@@ -109,7 +153,6 @@ static bool test_parm( int d, long num_sig, ... ) {
                        0, NULL, 0, 0 );
     if (!w) {
         printf( "Error loading working key\n" );
-        free(sig);
         return false;
     }
 
@@ -126,13 +169,11 @@ static bool test_parm( int d, long num_sig, ... ) {
         if (success) {
              printf( "Error: signature succeeded with too small of a buffer\n" );
              hss_free_working_key(w);
-             free(sig);
              return false;
         }
         if (hss_extra_info_test_error_code(&info) != hss_error_buffer_overflow) {
              printf( "Error: too small buffer gives wrong error\n" );
              hss_free_working_key(w);
-             free(sig);
              return false;
         }
 
@@ -143,13 +184,11 @@ static bool test_parm( int d, long num_sig, ... ) {
         if (success || !all_zeros(sig, sig_size)) {
              printf( "Error: signature succeeded when key update failed\n" );
              hss_free_working_key(w);
-             free(sig);
              return false;
         }
         if (hss_extra_info_test_error_code(&info) != hss_error_private_key_write_failed) {
              printf( "Error: update failure gives wrong error\n" );
              hss_free_working_key(w);
-             free(sig);
              return false;
         }
     }
@@ -177,7 +216,6 @@ static bool test_parm( int d, long num_sig, ... ) {
             if (hss_extra_info_test_error_code(&info) != hss_error_private_key_expired) {
                  printf( "Error: private key expiry failure gives wrong error\n" );
                  hss_free_working_key(w);
-                 free(sig);
                  return false;
             }
         }
@@ -223,13 +261,18 @@ static bool test_parm( int d, long num_sig, ... ) {
             case LMOTS_SHA256_N32_W2: offset += 32 + 32*133; break;
             case LMOTS_SHA256_N32_W4: offset += 32 + 32*67; break;
             case LMOTS_SHA256_N32_W8: offset += 32 + 32*34; break;
+            case LMOTS_SHA256_N24_W1: offset += 24 + 24*200; break;
+            case LMOTS_SHA256_N24_W2: offset += 24 + 24*101; break;
+            case LMOTS_SHA256_N24_W4: offset += 24 + 24*51; break;
+            case LMOTS_SHA256_N24_W8: offset += 24 + 24*26; break;
             default: goto failed;
             }
             /* Get the LM type */
             get_next(val); if (val != lm_type[level]) goto failed;
             /* Skip the appropriate number of hashes */
             int h = lookup_h(val); if (!h) goto failed;
-            offset += 32*h;
+            int n = lookup_n(val); if (!n) goto failed;
+            offset += n*h;
             /* Make sure that the q we got was in range */
             if (q >= 1UL << h) goto failed;
 
@@ -239,8 +282,9 @@ static bool test_parm( int d, long num_sig, ... ) {
             /* We're now into the public key; validate its parm set */
             get_next(val); if (val != lm_type[level+1]) goto failed;
             h = lookup_h(val); if (!h) goto failed; seq_no <<= h;
+            n = lookup_n(val); if (!n) goto failed;
             get_next(val); if (val != ots_type[level+1]) goto failed;
-            offset += 16 + 32;
+            offset += 16 + n;
         }
 
         /* If the signature used the wrong sequence number, fail */
@@ -251,12 +295,14 @@ static bool test_parm( int d, long num_sig, ... ) {
     }
 
     hss_free_working_key(w);
-    free(sig);
     return retval;
 
 failed:
     printf( "Signature did not match expected\n" );
+    printf( "Parameter set under test:\n" );
+    for (i=0; i<d; i++) printf( " %x/%x", (unsigned)lm_type[i],
+                                          (unsigned)ots_type[i] );
+    printf( "\n" );
     hss_free_working_key(w);
-    free(sig);
     return false;
 }

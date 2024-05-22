@@ -25,7 +25,6 @@ static bool ignore_update(unsigned char *private_key, size_t len, void *ctx) {
 
 static bool run_test(int d, param_set_t *lm_array, param_set_t *lm_ots_array,
                      unsigned num_iter, bool at_end) {
-
     size_t len_private_key = hss_get_private_key_len(d, lm_array, lm_ots_array );
     if (len_private_key == 0 || len_private_key > HSS_MAX_PRIVATE_KEY_LEN) { 
         printf( "    Len private key failed\n" );
@@ -326,8 +325,32 @@ bool test_sign_inc(bool fast_flag, bool quiet_flag) {
     }
     {
         int d = 1;
+        param_set_t lm_array[1] = { LMS_SHA256_N24_H5 };
+        param_set_t lm_ots_array[1] = { LMOTS_SHA256_N24_W8 };
+        if (!run_test( d, lm_array, lm_ots_array, 32, true )) return false;
+    }
+    {
+        int d = 1;
+        param_set_t lm_array[1] = { LMS_SHA256_N24_H5 };
+        param_set_t lm_ots_array[1] = { LMOTS_SHA256_N32_W8 };
+        if (!run_test( d, lm_array, lm_ots_array, 32, true )) return false;
+    }
+    {
+        int d = 1;
+        param_set_t lm_array[1] = { LMS_SHA256_N32_H5 };
+        param_set_t lm_ots_array[1] = { LMOTS_SHA256_N24_W8 };
+        if (!run_test( d, lm_array, lm_ots_array, 32, true )) return false;
+    }
+    {
+        int d = 1;
         param_set_t lm_array[1] = { LMS_SHA256_N32_H10 };
         param_set_t lm_ots_array[1] = { LMOTS_SHA256_N32_W4 };
+        if (!run_test( d, lm_array, lm_ots_array, 1024, true )) return false;
+    }
+    {
+        int d = 1;
+        param_set_t lm_array[1] = { LMS_SHA256_N24_H10 };
+        param_set_t lm_ots_array[1] = { LMOTS_SHA256_N24_W4 };
         if (!run_test( d, lm_array, lm_ots_array, 1024, true )) return false;
     }
     {
@@ -338,16 +361,52 @@ bool test_sign_inc(bool fast_flag, bool quiet_flag) {
     }
     {
         int d = 2;
+        param_set_t lm_array[2] = { LMS_SHA256_N24_H5, LMS_SHA256_N24_H5 };
+        param_set_t lm_ots_array[2] = { LMOTS_SHA256_N24_W4, LMOTS_SHA256_N24_W2 };
+        if (!run_test( d, lm_array, lm_ots_array, 1024, true )) return false;
+    }
+    {
+        int d = 2;
+        param_set_t lm_array[2] = { LMS_SHA256_N32_H5, LMS_SHA256_N24_H5 };
+        param_set_t lm_ots_array[2] = { LMOTS_SHA256_N24_W4, LMOTS_SHA256_N24_W2 };
+        if (!run_test( d, lm_array, lm_ots_array, 1024, true )) return false;
+    }
+    {
+        int d = 2;
+        param_set_t lm_array[2] = { LMS_SHA256_N24_H5, LMS_SHA256_N32_H5 };
+        param_set_t lm_ots_array[2] = { LMOTS_SHA256_N24_W4, LMOTS_SHA256_N24_W2 };
+        if (!run_test( d, lm_array, lm_ots_array, 1024, true )) return false;
+    }
+    {
+        int d = 2;
+        param_set_t lm_array[2] = { LMS_SHA256_N24_H5, LMS_SHA256_N24_H5 };
+        param_set_t lm_ots_array[2] = { LMOTS_SHA256_N32_W4, LMOTS_SHA256_N24_W2 };
+        if (!run_test( d, lm_array, lm_ots_array, 1024, true )) return false;
+    }
+    {
+        int d = 2;
+        param_set_t lm_array[2] = { LMS_SHA256_N24_H5, LMS_SHA256_N24_H5 };
+        param_set_t lm_ots_array[2] = { LMOTS_SHA256_N24_W4, LMOTS_SHA256_N32_W2 };
+        if (!run_test( d, lm_array, lm_ots_array, 1024, true )) return false;
+    }
+    {
+        int d = 2;
         param_set_t lm_array[2] = { LMS_SHA256_N32_H10, LMS_SHA256_N32_H5 };
         param_set_t lm_ots_array[2] = { LMOTS_SHA256_N32_W8, LMOTS_SHA256_N32_W2 };
         if (!run_test( d, lm_array, lm_ots_array, 100, false )) return false;
     }
     {
+        int d = 2;
+        param_set_t lm_array[2] = { LMS_SHA256_N24_H10, LMS_SHA256_N24_H5 };
+        param_set_t lm_ots_array[2] = { LMOTS_SHA256_N24_W8, LMOTS_SHA256_N24_W2 };
+        if (!run_test( d, lm_array, lm_ots_array, 100, false )) return false;
+    }
+    {
         int d = 3;
         param_set_t lm_array[3] = {
-            LMS_SHA256_N32_H10, LMS_SHA256_N32_H5, LMS_SHA256_N32_H5 };
+            LMS_SHA256_N24_H10, LMS_SHA256_N24_H5, LMS_SHA256_N24_H5 };
         param_set_t lm_ots_array[3] = {
-            LMOTS_SHA256_N32_W8, LMOTS_SHA256_N32_W4, LMOTS_SHA256_N32_W2 };
+            LMOTS_SHA256_N24_W8, LMOTS_SHA256_N24_W4, LMOTS_SHA256_N24_W2 };
         if (!run_test( d, lm_array, lm_ots_array, 2000, false )) return false;
     }
 
@@ -364,9 +423,9 @@ bool test_sign_inc(bool fast_flag, bool quiet_flag) {
     {
         int d = 3;
         param_set_t lm_array[3] = {
-            LMS_SHA256_N32_H10, LMS_SHA256_N32_H5, LMS_SHA256_N32_H5 };
+            LMS_SHA256_N24_H10, LMS_SHA256_N24_H5, LMS_SHA256_N24_H5 };
         param_set_t lm_ots_array[3] = {
-            LMOTS_SHA256_N32_W8, LMOTS_SHA256_N32_W8, LMOTS_SHA256_N32_W8 };
+            LMOTS_SHA256_N24_W8, LMOTS_SHA256_N24_W8, LMOTS_SHA256_N24_W8 };
         int num_iter;
         if (fast_flag) num_iter = 100; else num_iter = 10000;
         if (!run_test_2( d, lm_array, lm_ots_array, num_iter )) return false;

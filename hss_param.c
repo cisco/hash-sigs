@@ -3,6 +3,55 @@
 #include "hss_internal.h"
 #include "endian.h"
 #include "hss_zeroize.h"
+#include "lm_common.h"
+
+static struct map_structure {
+    param_set_t public;
+    unsigned char compressed;
+} lm_map[] = {
+    { LMS_SHA256_N32_H5, 0x05 },
+    { LMS_SHA256_N32_H10,0x06 },
+    { LMS_SHA256_N32_H15,0x07 },
+    { LMS_SHA256_N32_H20,0x08 },
+    { LMS_SHA256_N32_H25,0x09 },
+    { LMS_SHA256_N24_H5, 0x0a },
+    { LMS_SHA256_N24_H10,0x0b },
+    { LMS_SHA256_N24_H15,0x0c },
+    { LMS_SHA256_N24_H20,0x0d },
+    { LMS_SHA256_N24_H25,0x0e },
+    { 0, 0 }},
+   ots_map[] = {
+    { LMOTS_SHA256_N32_W1, 0x01 },
+    { LMOTS_SHA256_N32_W2, 0x02 },
+    { LMOTS_SHA256_N32_W4, 0x03 },
+    { LMOTS_SHA256_N32_W8, 0x04 },
+    { LMOTS_SHA256_N24_W1, 0x09 },
+    { LMOTS_SHA256_N24_W2, 0x0a },
+    { LMOTS_SHA256_N24_W4, 0x0b },
+    { LMOTS_SHA256_N24_W8, 0x0c },
+    { 0, 0 }};
+static bool map(param_set_t *a,
+                struct map_structure *map) {
+    int i;
+    for (i=0; map[i].public != 0; i++) {
+        if (map[i].public == *a) {
+            *a = map[i].compressed;
+            return true;
+        }
+    }
+    return false;
+}
+static bool unmap(param_set_t *a,
+                struct map_structure *map) {
+    int i;
+    for (i=0; map[i].public != 0; i++) {
+        if (map[i].compressed == *a) {
+            *a = map[i].public;
+            return true;
+        }
+    }
+    return false;
+}
 
 /*
  * Convert a parameter set into the compressed version we use within a private
@@ -20,26 +69,11 @@ bool hss_compress_param_set( unsigned char *compressed,
         if (len_compressed == 0) return false;
         param_set_t a = *lm_type++;
         param_set_t b = *lm_ots_type++;
-            /* All the parameter sets we support are small */
-            /* Review this format if we need to support larger ones */
-        if (a > 0x0e || b > 0x0e) return false;
-            /* Make sure the parm sets are supported */
-        switch (a) {
-        case LMS_SHA256_N32_H5: case LMS_SHA256_N32_H10:
-        case LMS_SHA256_N32_H15: case LMS_SHA256_N32_H20:
-        case LMS_SHA256_N32_H25:
-            break;
-        default:
-            return false;
-        }
-        switch (b) {
-        case LMOTS_SHA256_N32_W1: case LMOTS_SHA256_N32_W2:
-        case LMOTS_SHA256_N32_W4: case LMOTS_SHA256_N32_W8:
-            break;
-        default:
-            return false;
-        }
-        
+
+        /* Convert the official mappings to the compressed versions */
+        if (!map( &a, lm_map ) ||
+            !map( &b, ots_map )) return false;
+
         *compressed++ = (a<<4) + b;
         len_compressed--;
     }
@@ -74,7 +108,7 @@ bool hss_get_parameter_set( unsigned *levels,
                            bool (*read_private_key)(unsigned char *private_key,
                                        size_t len_private_key, void *context),
                            void *context) {
-    unsigned char private_key[ PRIVATE_KEY_LEN ];
+    unsigned char private_key[ PRIVATE_KEY_LEN(MAX_SEED_LEN) ];
     bool success = false;
 
     if (read_private_key) {
@@ -97,20 +131,22 @@ bool hss_get_parameter_set( unsigned *levels,
         param_set_t ots = (c & 0x0f);
             /* Make sure both are supported */
             /* While we're here, add up the total Merkle height */
+
+        /* How we unpack the parameter sets */
+        if (!unmap( &lm, lm_map ) ||
+            !unmap( &ots, ots_map )) goto failed;
+            /* While we're here, add up the total Merkle height */
         switch (lm) {
-        case LMS_SHA256_N32_H5:  total_height += 5; break;
-        case LMS_SHA256_N32_H10: total_height += 10; break;
-        case LMS_SHA256_N32_H15: total_height += 15; break;
-        case LMS_SHA256_N32_H20: total_height += 20; break;
-        case LMS_SHA256_N32_H25: total_height += 25; break;
-        default: goto failed;
-        }
-        switch (ots) {
-        case LMOTS_SHA256_N32_W1:
-        case LMOTS_SHA256_N32_W2:
-        case LMOTS_SHA256_N32_W4:
-        case LMOTS_SHA256_N32_W8:
-            break;
+        case LMS_SHA256_N32_H5:
+        case LMS_SHA256_N24_H5:  total_height += 5; break;
+        case LMS_SHA256_N32_H10:
+        case LMS_SHA256_N24_H10: total_height += 10; break;
+        case LMS_SHA256_N32_H15:
+        case LMS_SHA256_N24_H15: total_height += 15; break;
+        case LMS_SHA256_N32_H20:
+        case LMS_SHA256_N24_H20: total_height += 20; break;
+        case LMS_SHA256_N32_H25:
+        case LMS_SHA256_N24_H25: total_height += 25; break;
         default: goto failed;
         }
         lm_type[level] = lm;
@@ -150,4 +186,14 @@ failed:
         /* There might be private keying material here */
     hss_zeroize( private_key, sizeof private_key );
     return success;
+}
+
+int get_level0_lm_hash_len( const unsigned char *private_key ) {
+    /* Look up the compressed parameter set format */
+    unsigned char c = private_key[PRIVATE_KEY_PARAM_SET];
+    param_set_t lm = (c >> 4);
+    if (!unmap( &lm, lm_map )) return 0; 
+    unsigned n;
+    if (!lm_look_up_parameter_set(lm, 0, &n, 0)) return 0;
+    return n;
 }

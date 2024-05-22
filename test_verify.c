@@ -8,8 +8,9 @@
 #include "test_hss.h"
 
 static param_set_t h_array[] = { 
+    LMS_SHA256_N24_H5,
     LMS_SHA256_N32_H5,
-    LMS_SHA256_N32_H10
+    LMS_SHA256_N24_H10,
         /* We don't test out the higher heights, because that'd take too */
         /* long, and wouldn't tell us that much for this test */
 };
@@ -17,9 +18,13 @@ static param_set_t h_array[] = {
 
 static param_set_t w_array[] = { 
     LMOTS_SHA256_N32_W1,
+    LMOTS_SHA256_N24_W1,
     LMOTS_SHA256_N32_W2,
+    LMOTS_SHA256_N24_W2,
     LMOTS_SHA256_N32_W4,
-    LMOTS_SHA256_N32_W8
+    LMOTS_SHA256_N24_W4,
+    LMOTS_SHA256_N32_W8,
+    LMOTS_SHA256_N24_W8,
 };
 #define MAX_W_INDEX (sizeof w_array / sizeof *w_array )
 /* This is (roughly) the number of hash compression operatios needed to */
@@ -66,11 +71,14 @@ bool test_verify(bool fast_flag, bool quiet_flag) {
         for (w_index=0; w_index < MAX_W_INDEX; w_index++) {
             param_set_t h = h_array[h_index];
             param_set_t w = w_array[w_index];
+               /* Flag is set if we're testing out a W=8 parameter set */
+            int w8 = (w == LMOTS_SHA256_N32_W8 || w == LMOTS_SHA256_N24_W8);
+
                 /* Note: this particular combination takes longer than the */
                 /* rest combined; it wouldn't tell us much more, so skip it */
-            if (h == LMS_SHA256_N32_H10 && w == LMOTS_SHA256_N32_W8) continue;
+            if (h == LMS_SHA256_N24_H10 && w8) continue;
                 /* In fast mode, we both testing out W=8 only for d=1 */ 
-            if (fast_flag && d > 1 && w == LMOTS_SHA256_N32_W8) continue;
+            if (fast_flag && d > 1 && w8) continue;
 
             work_array[w_count].d = max_d = d;
             work_array[w_count].h = h;
