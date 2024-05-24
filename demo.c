@@ -93,7 +93,7 @@ bool do_rand( void *output, size_t len ) {
     /* Try to grab a sammple of /dev/urandom output */
     /* We use /dev/urandom because there's no point in blocking; this is a */
     /* demo program */
-    FILE *f = fopen( "/dev/urandom", "r" );
+    FILE *f = fopen( "/dev/urandom", "rb" );
     if (f) {
          (void)fread( buffer.dev_random_output, 1, 32, f );
          fclose(f);
@@ -150,7 +150,7 @@ static bool update_private_key( unsigned char *private_key,
     FILE *f = fopen( filename, "r+" );
     if (!f) {
         /* Open failed, possibly because the file didn't exist */
-        f = fopen( filename, "w" );
+        f = fopen( filename, "wb" );
         if (!f) {
             /* Unable to open file */
             return false;
@@ -176,7 +176,7 @@ static bool update_private_key( unsigned char *private_key,
  */
 static bool read_private_key( unsigned char *private_key,
                               size_t len_private_key, void *filename) {
-    FILE *f = fopen( filename, "r" );
+    FILE *f = fopen( filename, "rb" );
     if (!f) {
         return false;
     }
@@ -202,7 +202,7 @@ static bool read_private_key( unsigned char *private_key,
  * those in chunks within the sign()/verify() routines below.
  */
 void *read_file( const char *filename, size_t *len ) {
-    FILE *f = fopen( filename, "r" );
+    FILE *f = fopen( filename, "rb" );
     if (!f) return 0;
 
 #define FILE_INCREMENT 20000
@@ -253,7 +253,7 @@ static int fromhex(char c) {
  */
 static bool convert_specified_seed_i_value( void *buffer, size_t len) {
     int i;
-    const char *in = seedbits; 
+    const char *in = seedbits;
     unsigned char *out = buffer;
     for (i=0; i<len; i++) {
         /* After 32 bytes of seed, then comes the i value */
@@ -285,7 +285,7 @@ static void list_parameter_set(int levels, const param_set_t *lm_array,
  * With the default parameters, this takes quite a while if we're not
  * in threaded mode; in threaded mode, it takes 3 minutes on my test
  * equipment
- */ 
+ */
 static int keygen(const char *keyname, const char *parm_set) {
 
     /* Parse the parameter set */
@@ -355,7 +355,7 @@ static int keygen(const char *keyname, const char *parm_set) {
     sprintf( public_key_filename, "%s.pub", keyname );
 
     printf( "Success!\nWriting public key %s\n", public_key_filename );
-    FILE *f = fopen( public_key_filename, "w" );
+    FILE *f = fopen( public_key_filename, "wb" );
     free(public_key_filename ); public_key_filename = 0;
     if (!f) {
         fprintf( stderr, "Error: unable to write public key\n" );
@@ -395,7 +395,7 @@ static int keygen(const char *keyname, const char *parm_set) {
         /* Attempt to write the aux file.  Note that if we fail, we'll still */
         /* claim to have succeeded (as the aux file is optional) */
         printf( "Writing aux data %s\n", aux_filename );
-        f = fopen( aux_filename, "w" );
+        f = fopen( aux_filename, "wb" );
         free(aux_filename); aux_filename = 0;
         if (!f) {
             fprintf( stderr, "Warning: unable to write aux file\n" );
@@ -435,7 +435,7 @@ static int sign(const char *keyname, char **files) {
     }
     sprintf( private_key_filename, "%s.prv", keyname );
 
-        /* Read in the auxilliary file */   
+        /* Read in the auxilliary file */
     size_t aux_filename_len = strlen(keyname) + sizeof (".aux" ) + 1;
     char *aux_filename = malloc(aux_filename_len);
     if (!aux_filename) {
@@ -507,7 +507,7 @@ static int sign(const char *keyname, char **files) {
          * read it in in pieces, and use the API that allows us to sign
          * the message when given in pieces
          */
-        FILE *f = fopen( files[i], "r" );
+        FILE *f = fopen( files[i], "rb" );
         if (!f) {
             printf( "    %s: unable to read\n", files[i] );
             continue;
@@ -551,7 +551,7 @@ static int sign(const char *keyname, char **files) {
             continue;
         }
         sprintf( sig_file_name, "%s.sig", files[i] );
-        f = fopen( sig_file_name, "w" );
+        f = fopen( sig_file_name, "wb" );
         if (!f) {
             printf( "    %s: unable to create\n", sig_file_name );
             free(sig_file_name);
@@ -624,7 +624,7 @@ static int verify(const char *keyname, char **files) {
          * read it in in pieces, and use the API that allows us to verify
          * the message when given in pieces
          */
-        FILE *f = fopen( files[i], "r" );
+        FILE *f = fopen( files[i], "rb" );
         if (!f) {
             printf( "    %s: unable to read\n", files[i] );
             free(sig);
@@ -690,7 +690,7 @@ static int advance(const char *keyname, const char *text_advance) {
     }
     sprintf( private_key_filename, "%s.prv", keyname );
 
-        /* Read in the auxilliary file */   
+        /* Read in the auxilliary file */
     size_t aux_filename_len = strlen(keyname) + sizeof (".aux" ) + 1;
     char *aux_filename = malloc(aux_filename_len);
     if (!aux_filename) {
