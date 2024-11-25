@@ -172,7 +172,7 @@ bool hss_generate_private_key(
     unsigned level;
     unsigned char *dest = 0;  /* The area we actually write to */
     void *temp_buffer = 0;  /* The buffer we need to free when done */
-    for (level = h0-1; level > 2; level--) {
+    for (level = h0-1; level > 1; level--) {
             /* If our bottom-most aux data is at this level, we want it */
         if (expanded_aux_data && expanded_aux_data->data[level]) {
                 /* Write directly into the aux area */
