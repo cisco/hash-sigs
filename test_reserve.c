@@ -125,21 +125,43 @@ bool test_reserve(bool fast_flag, bool quiet_flag) {
             /* During the manual_res test, we randomly ask for manual */
             /* reservations */
             if (do_manual_res && (my_rand() & 0x1f) == 0x0d) {
+                struct hss_extra_info info;
                 unsigned manual_res = my_rand() & 0x0f;
                 got_update = false;
-                if (!hss_reserve_signature(w, update_private_key, NULL,
-                        manual_res, NULL)) {
-                    hss_free_working_key(w);
-                    printf( "Error: unable to do manual reserve\n" );
-                    return false;
-                }
+                int success = hss_reserve_signature(w, update_private_key,
+			       	NULL, manual_res, &info);
+
+		/* We expect success if we're all the signatures we are */
+		/* reserving are available */
+		int expect_success = (i + manual_res) <= 1024;
+
+		if (expect_success) {
+		    if (!success) {
+                        hss_free_working_key(w);
+                        printf( "Error: unable to do manual reserve\n" );
+                        return false;
+		    }
+                } else {
+		    if (success) {
+                        hss_free_working_key(w);
+                        printf( "Error: manual reserve succeeded when it should have failed\n" );
+                        return false;
+		    }
+		    if (hss_extra_info_test_error_code( &info ) != hss_error_not_that_many_sigs_left) {
+                        hss_free_working_key(w);
+                        printf( "Error: manual reserve did not get expected error code\n" );
+                        return false;
+		    }
+		    manual_res = 0; /* We act as if nothing was reserved */
+		                    /* (because it wasn't - the try failed) */
+		}
+
                 if (got_update && got_error) {
                     hss_free_working_key(w);
                     printf( "Error: manual reservation: set private key "
                             "to illegal value\n" );
                     return false;
                 }
-                if (manual_res > 1023 - i) manual_res = 1023 - i;
                 if (manual_res <= reserved) {
                     if (got_update) {
                         hss_free_working_key(w);

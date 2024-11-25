@@ -396,6 +396,13 @@ General notes:
       struct hss_extra_info info;
       hss_init_extra_info( &info );
 
+- One subtle update: the semantics of hss_reserve_signature has been modified
+  subtly.  It used to be 'make sure that the state in the private key field
+  is at least k value in the future'; now it is 'try to make sure that we
+  won't need to update the state for the next k signatures (and thus cannot
+  get a write failure).  The distinction is that if there is not k signatures
+  remaining; now, we generate an error in that case.
+
 Future ideas; I'm not against future ideas, but this package is getting
 sufficiently complex that I'm not likely to do anything that adds even more
 complexity unless someone has a real need.  If you do have a real need (for
