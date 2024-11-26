@@ -1,6 +1,7 @@
 #if !defined( HSS_DERIVE_H_ )
 #define HSS_DERIVE_H_
 
+#include <stddef.h>
 #include "common_defs.h"
 
 #include "config.h"
@@ -18,6 +19,7 @@ struct seed_derive {
 #if SECRET_METHOD == 2
     unsigned hash;  /* Hash function to use */
     unsigned m;     /* Length of hash function */
+    unsigned master_seed_len;
 #endif
 
 #if SECRET_METHOD == 1
@@ -33,14 +35,15 @@ struct seed_derive {
         /* the parent it is; the higher bits indicate the parents' */
         /* identities */
 
-    unsigned char q_seed[MAX_Q_HEIGHT][SEED_LEN];
-    unsigned char j_seed[MAX_Q_HEIGHT][SEED_LEN];
+    unsigned char q_seed[MAX_Q_HEIGHT][MAX_SEED_LEN];
+    unsigned char j_seed[MAX_Q_HEIGHT][MAX_SEED_LEN];
 #endif
 };
 
 bool hss_seed_derive_init( struct seed_derive *derive,
                  param_set_t lm, param_set_t ots,
-                 const unsigned char *I, const unsigned char *seed );
+                 const unsigned char *I,
+                 const unsigned char *seed, size_t seed_len );
 
 /* This sets the internal 'q' value */
 /* If we've already have a 'q' value set, it'll try to minimize the number */
@@ -64,8 +67,9 @@ void hss_seed_derive_set_j( struct seed_derive *derive, unsigned j );
 
 /* This generates the current seed.  If increment_j is set, this will set */
 /* up for the next j value */
-void hss_seed_derive( unsigned char *seed, struct seed_derive *derive,
-                      bool increment_j );
+/* output_len is the length of the seed to generate */
+void hss_seed_derive( unsigned char *seed, size_t output_len,
+                      struct seed_derive *derive, bool increment_j );
 
 /* This needs to be called when we done with a seed_derive */
 /* That structure contains keying data, this makes sure those are cleaned */
