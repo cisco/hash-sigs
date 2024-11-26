@@ -79,7 +79,7 @@ bool test_h25(bool fast_flag, bool quiet_flag) {
     long i;
     for (i=0; i<100000; i++) {
         char message[30];
-        sprintf( message, "Message %ld", i );
+        snprintf( message, sizeof message, "Message %ld", i );
         unsigned message_len = strlen(message);
         bool success = hss_generate_signature( w, NULL, privkey,
                       message, message_len,
