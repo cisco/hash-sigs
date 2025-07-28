@@ -9,26 +9,44 @@ static struct map_structure {
     param_set_t public;
     unsigned char compressed;
 } lm_map[] = {
-    { LMS_SHA256_N32_H5, 0x05 },
-    { LMS_SHA256_N32_H10,0x06 },
-    { LMS_SHA256_N32_H15,0x07 },
-    { LMS_SHA256_N32_H20,0x08 },
-    { LMS_SHA256_N32_H25,0x09 },
-    { LMS_SHA256_N24_H5, 0x0a },
-    { LMS_SHA256_N24_H10,0x0b },
-    { LMS_SHA256_N24_H15,0x0c },
-    { LMS_SHA256_N24_H20,0x0d },
-    { LMS_SHA256_N24_H25,0x0e },
+    { LMS_SHA256_N32_H5, 0x01 },
+    { LMS_SHA256_N32_H10,0x02 },
+    { LMS_SHA256_N32_H15,0x03 },
+    { LMS_SHA256_N32_H20,0x04 },
+    { LMS_SHA256_N32_H25,0x05 },
+    { LMS_SHA256_N24_H5, 0x06 },
+    { LMS_SHA256_N24_H10,0x07 },
+    { LMS_SHA256_N24_H15,0x08 },
+    { LMS_SHA256_N24_H20,0x09 },
+    { LMS_SHA256_N24_H25,0x0a },
+    { LMS_SHAKE256_N32_H5, 0x0b },
+    { LMS_SHAKE256_N32_H10,0x0c },
+    { LMS_SHAKE256_N32_H15,0x0d },
+    { LMS_SHAKE256_N32_H20,0x0e },
+    { LMS_SHAKE256_N32_H25,0x0f },
+    { LMS_SHAKE256_N24_H5, 0x10 },
+    { LMS_SHAKE256_N24_H10,0x11 },
+    { LMS_SHAKE256_N24_H15,0x12 },
+    { LMS_SHAKE256_N24_H20,0x13 },
+    { LMS_SHAKE256_N24_H25,0x14 },
     { 0, 0 }},
    ots_map[] = {
     { LMOTS_SHA256_N32_W1, 0x01 },
     { LMOTS_SHA256_N32_W2, 0x02 },
     { LMOTS_SHA256_N32_W4, 0x03 },
     { LMOTS_SHA256_N32_W8, 0x04 },
-    { LMOTS_SHA256_N24_W1, 0x09 },
-    { LMOTS_SHA256_N24_W2, 0x0a },
-    { LMOTS_SHA256_N24_W4, 0x0b },
-    { LMOTS_SHA256_N24_W8, 0x0c },
+    { LMOTS_SHA256_N24_W1, 0x05 },
+    { LMOTS_SHA256_N24_W2, 0x06 },
+    { LMOTS_SHA256_N24_W4, 0x07 },
+    { LMOTS_SHA256_N24_W8, 0x08 },
+    { LMOTS_SHAKE256_N32_W1, 0x09 },
+    { LMOTS_SHAKE256_N32_W2, 0x0a },
+    { LMOTS_SHAKE256_N32_W4, 0x0b },
+    { LMOTS_SHAKE256_N32_W8, 0x0c },
+    { LMOTS_SHAKE256_N24_W1, 0x0d },
+    { LMOTS_SHAKE256_N24_W2, 0x0e },
+    { LMOTS_SHAKE256_N24_W4, 0x0f },
+    { LMOTS_SHAKE256_N24_W8, 0x10 },
     { 0, 0 }};
 static bool map(param_set_t *a,
                 struct map_structure *map) {
@@ -74,8 +92,9 @@ bool hss_compress_param_set( unsigned char *compressed,
         if (!map( &a, lm_map ) ||
             !map( &b, ots_map )) return false;
 
-        *compressed++ = (a<<4) + b;
-        len_compressed--;
+        *compressed++ = a;
+        *compressed++ = b;
+        len_compressed -= 2;
     }
 
     while (len_compressed) {
@@ -107,16 +126,24 @@ bool hss_get_parameter_set( unsigned *levels,
                            param_set_t lm_ots_type[ MAX_HSS_LEVELS ],
                            bool (*read_private_key)(unsigned char *private_key,
                                        size_t len_private_key, void *context),
-                           void *context) {
+                           void *context,
+                           struct hss_extra_info *info) {
     unsigned char private_key[ PRIVATE_KEY_LEN(MAX_SEED_LEN) ];
     bool success = false;
+    enum hss_error_code error_code = hss_error_bad_private_key; /* Most of */
+        /* the detected errors are 'what's in the private key does not */
+        /* correspond to a supported parameter set' */
 
     if (read_private_key) {
         if (!read_private_key( private_key, PRIVATE_KEY_SEED, context )) {
+            error_code = hss_error_private_key_read_failed;
             goto failed;
         }
     } else {
-        if (!context) return false;
+        if (!context) {
+            error_code = hss_error_no_private_buffer;
+            goto failed;
+        }
         memcpy( private_key, context, PRIVATE_KEY_SEED );
     }
 
@@ -124,11 +151,12 @@ bool hss_get_parameter_set( unsigned *levels,
     unsigned total_height = 0;
     unsigned level;
     for (level=0; level < MAX_HSS_LEVELS; level++) {
-        unsigned char c = private_key[PRIVATE_KEY_PARAM_SET + level];
-        if (c == PARM_SET_END) break;
+        unsigned char c = private_key[PRIVATE_KEY_PARAM_SET + 2*level];
+        unsigned char d = private_key[PRIVATE_KEY_PARAM_SET + 2*level + 1];
+        if (c == PARM_SET_END && d == PARM_SET_END) break;
             /* Decode this level's parameter set */
-        param_set_t lm = (c >> 4);
-        param_set_t ots = (c & 0x0f);
+        param_set_t lm = c;
+        param_set_t ots = d;
             /* Make sure both are supported */
             /* While we're here, add up the total Merkle height */
 
@@ -138,15 +166,25 @@ bool hss_get_parameter_set( unsigned *levels,
             /* While we're here, add up the total Merkle height */
         switch (lm) {
         case LMS_SHA256_N32_H5:
-        case LMS_SHA256_N24_H5:  total_height += 5; break;
+        case LMS_SHA256_N24_H5:
+        case LMS_SHAKE256_N32_H5:
+        case LMS_SHAKE256_N24_H5: total_height += 5; break;
         case LMS_SHA256_N32_H10:
-        case LMS_SHA256_N24_H10: total_height += 10; break;
+        case LMS_SHA256_N24_H10:
+        case LMS_SHAKE256_N32_H10:
+        case LMS_SHAKE256_N24_H10: total_height += 10; break;
         case LMS_SHA256_N32_H15:
-        case LMS_SHA256_N24_H15: total_height += 15; break;
+        case LMS_SHA256_N24_H15:
+        case LMS_SHAKE256_N32_H15:
+        case LMS_SHAKE256_N24_H15: total_height += 15; break;
         case LMS_SHA256_N32_H20:
-        case LMS_SHA256_N24_H20: total_height += 20; break;
+        case LMS_SHA256_N24_H20:
+        case LMS_SHAKE256_N32_H20:
+        case LMS_SHAKE256_N24_H20: total_height += 20; break;
         case LMS_SHA256_N32_H25:
-        case LMS_SHA256_N24_H25: total_height += 25; break;
+        case LMS_SHA256_N24_H25:
+        case LMS_SHAKE256_N32_H25:
+        case LMS_SHAKE256_N24_H25: total_height += 25; break;
         default: goto failed;
         }
         lm_type[level] = lm;
@@ -159,7 +197,7 @@ bool hss_get_parameter_set( unsigned *levels,
 
     /* Make sure that the rest of the private key has PARM_SET_END */
     unsigned i;
-    for (i = level+1; i<MAX_HSS_LEVELS; i++) {
+    for (i = 2*(level+1); i<2*MAX_HSS_LEVELS; i++) {
         unsigned char c = private_key[PRIVATE_KEY_PARAM_SET + i];
         if (c != PARM_SET_END) goto failed;
     }
@@ -179,10 +217,16 @@ bool hss_get_parameter_set( unsigned *levels,
     sequence_t current_count = get_bigendian(
                  private_key + PRIVATE_KEY_INDEX, PRIVATE_KEY_INDEX_LEN );
 
-    if (current_count > max_count) goto failed;  /* Private key expired */
+    if (current_count > max_count) {
+      	/* Private key expired */
+	error_code = hss_error_private_key_expired;
+        goto failed;
+    }
 
     success = true;   /* It worked! */
+    error_code = hss_error_none;
 failed:
+    if (info) info->error_code = error_code;
         /* There might be private keying material here */
     hss_zeroize( private_key, sizeof private_key );
     return success;
@@ -191,7 +235,7 @@ failed:
 int get_level0_lm_hash_len( const unsigned char *private_key ) {
     /* Look up the compressed parameter set format */
     unsigned char c = private_key[PRIVATE_KEY_PARAM_SET];
-    param_set_t lm = (c >> 4);
+    param_set_t lm = c;
     if (!unmap( &lm, lm_map )) return 0; 
     unsigned n;
     if (!lm_look_up_parameter_set(lm, 0, &n, 0)) return 0;

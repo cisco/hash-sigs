@@ -187,7 +187,8 @@ static bool test_parm( int d, long num_sig, ... ) {
              return false;
         }
         if (hss_extra_info_test_error_code(&info) != hss_error_private_key_write_failed) {
-             printf( "Error: update failure gives wrong error\n" );
+             printf( "Error: update failure gives wrong error got %d expected %d\n",
+		  hss_extra_info_test_error_code(&info), hss_error_private_key_write_failed );
              hss_free_working_key(w);
              return false;
         }

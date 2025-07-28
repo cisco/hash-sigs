@@ -1,10 +1,6 @@
 This code attempts to be a usable implementation of the LMS Hash Based
 Signature Scheme from RFC 8554.
 
-This branch includes the SHA256/192 hashes from draft-fluhrer-lms-more-parm-sets;
-currently, it does not include the SHAKE-based ones.
+This branch includes the parameter sets from draft-fluhrer-lms-more-parm-sets.
 
 See read.me for documentation how to use it.
-
-This is the ACVP branch - designed to be (optionally) compatible with the
-public ACVP server

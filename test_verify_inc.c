@@ -230,6 +230,16 @@ bool test_verify_inc(bool fast_flag, bool quiet_flag) {
         if (!do_test( fast_flag, max_d, lm_array, lm_ots_array))
             return false;
     }
+    {
+        static param_set_t lm_array[MAX_D] = {
+                                    LMS_SHAKE256_N24_H10, LMS_SHAKE256_N24_H5,
+                                    LMS_SHAKE256_N24_H5, LMS_SHAKE256_N24_H5 };
+        static param_set_t lm_ots_array[MAX_D] = {
+                  LMOTS_SHAKE256_N24_W4, LMOTS_SHAKE256_N24_W4,
+                  LMOTS_SHAKE256_N24_W4, LMOTS_SHAKE256_N24_W4 };
+        if (!do_test( fast_flag, max_d, lm_array, lm_ots_array))
+            return false;
+    }
 
     if (!fast_flag) {
         static param_set_t lm_array[MAX_D] = {
@@ -238,6 +248,17 @@ bool test_verify_inc(bool fast_flag, bool quiet_flag) {
         static param_set_t lm_ots_array[MAX_D] = {
                   LMOTS_SHA256_N32_W4, LMOTS_SHA256_N32_W4,
                   LMOTS_SHA256_N32_W4, LMOTS_SHA256_N32_W4 };
+        if (!do_test( fast_flag, max_d, lm_array, lm_ots_array))
+            return false;
+    }
+
+    if (!fast_flag) {
+        static param_set_t lm_array[MAX_D] = {
+                                    LMS_SHAKE256_N32_H10, LMS_SHAKE256_N32_H5,
+                                    LMS_SHAKE256_N32_H5, LMS_SHAKE256_N32_H5 };
+        static param_set_t lm_ots_array[MAX_D] = {
+                  LMOTS_SHAKE256_N32_W4, LMOTS_SHAKE256_N32_W4,
+                  LMOTS_SHAKE256_N32_W4, LMOTS_SHAKE256_N32_W4 };
         if (!do_test( fast_flag, max_d, lm_array, lm_ots_array))
             return false;
     }

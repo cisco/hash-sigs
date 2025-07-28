@@ -32,7 +32,8 @@ struct hss_working_key *hss_load_private_key(
     unsigned levels;
     param_set_t lm[ MAX_HSS_LEVELS ];
     param_set_t ots[ MAX_HSS_LEVELS ];
-    if (!hss_get_parameter_set( &levels, lm, ots, read_private_key, context)) {
+    if (!hss_get_parameter_set( &levels, lm, ots,
+                                read_private_key, context, info)) {
         /* Can't read private key, or private key invalid */
         return 0;
     }

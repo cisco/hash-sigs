@@ -205,15 +205,25 @@ bool test_keygen(bool fast_flag, bool quiet_flag) {
                 case LMS_SHA256_N24_H5:
                 case LMS_SHA256_N24_H10:
                 case LMS_SHA256_N24_H15:
+                case LMS_SHAKE256_N32_H5:
+                case LMS_SHAKE256_N32_H10:
+                case LMS_SHAKE256_N32_H15:
+                case LMS_SHAKE256_N24_H5:
+                case LMS_SHAKE256_N24_H10:
+                case LMS_SHAKE256_N24_H15:
                     expect_success = true; break;
                 case LMS_SHA256_N32_H20:
                 case LMS_SHA256_N24_H20:
+                case LMS_SHAKE256_N32_H20:
+                case LMS_SHAKE256_N24_H20:
                     if (i == 0 && fast_flag) goto next_iter; /* This parm */
                                         /* set takes too long for fast mode */
                                         /* (20 seconds on my test machine) */
                     expect_success = true; break;
                 case LMS_SHA256_N32_H25:
                 case LMS_SHA256_N24_H25:
+                case LMS_SHAKE256_N32_H25:
+                case LMS_SHAKE256_N24_H25:
                     if (i == 0) goto next_iter; /* This parm set takes too */
                                           /* long even for full mode; 10 */
                                           /* minutes for a test that doesn't */
@@ -259,6 +269,14 @@ next_iter:      lm ^= 0xe0000000L;  /* Cycle through the e000000 parm sets */
                 case LMOTS_SHA256_N24_W2:
                 case LMOTS_SHA256_N24_W4:
                 case LMOTS_SHA256_N24_W8:
+                case LMOTS_SHAKE256_N32_W1:
+                case LMOTS_SHAKE256_N32_W2:
+                case LMOTS_SHAKE256_N32_W4:
+                case LMOTS_SHAKE256_N32_W8:
+                case LMOTS_SHAKE256_N24_W1:
+                case LMOTS_SHAKE256_N24_W2:
+                case LMOTS_SHAKE256_N24_W4:
+                case LMOTS_SHAKE256_N24_W8:
                     expect_success = true; break;
                 default:   /* All unsupported LM types */
                     expect_success = false; break;
@@ -363,9 +381,17 @@ next_iter:      lm ^= 0xe0000000L;  /* Cycle through the e000000 parm sets */
         LMS_SHA256_N24_H10,
         LMS_SHA256_N32_H15,
         LMS_SHA256_N24_H15,
+        LMS_SHAKE256_N32_H5,
+        LMS_SHAKE256_N24_H5,
+        LMS_SHAKE256_N32_H10,
+        LMS_SHAKE256_N24_H10,
+        LMS_SHAKE256_N32_H15,
+        LMS_SHAKE256_N24_H15,
         0,                   /* Stop here if not fastflag */
         LMS_SHA256_N32_H20,
         LMS_SHA256_N24_H20,
+        LMS_SHAKE256_N32_H20,
+        LMS_SHAKE256_N24_H20,
     };
     for (i=0; i<sizeof parms_to_test/sizeof *parms_to_test; i++) {
         /* In fast mode, don't try the H20 parm set */

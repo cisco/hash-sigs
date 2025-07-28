@@ -11,9 +11,9 @@
  * this subsystem.  It should not be used by applications
  */
 
-#define PARAM_SET_COMPRESS_LEN 1  /* We assume that we can compress the */
+#define PARAM_SET_COMPRESS_LEN 2  /* We assume that we can compress the */
                                   /* lm_type and the lm_ots type for a */
-                                  /* single level into 1 byte */
+                                  /* single level into 2 bytes */
 
 #define PARM_SET_END 0xff   /* We set this marker in the parameter set */
                             /* when fewer than the maximum levels are used */
@@ -42,7 +42,7 @@
 #define PRIVATE_KEY_SEED_LEN(seed_len) SEED_LEN
 #endif
 #define PRIVATE_KEY_LEN(seed_len) (PRIVATE_KEY_SEED + \
-                    PRIVATE_KEY_SEED_LEN(seed_len)) /* That's 48-64 bytes */
+                    PRIVATE_KEY_SEED_LEN(seed_len)) /* That's 56-72 bytes */
 
 struct merkle_level;
 struct hss_working_key {

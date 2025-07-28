@@ -4,6 +4,7 @@
 #include <stdbool.h>
 
 extern bool test_testvector(bool fast_flag, bool quiet_flag);
+extern bool test_shake(bool fast_flag, bool quiet_flag);
 extern bool test_keygen(bool fast_flag, bool quiet_flag);
 extern bool test_load(bool fast_flag, bool quiet_flag);
 extern bool test_sign(bool fast_flag, bool quiet_flag);
