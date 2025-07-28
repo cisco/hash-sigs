@@ -186,7 +186,7 @@ signed long initial_mem_target = mem_target; /* DEBUG HACK */
     /* Initialize all the allocated data structures to NULL */
     /* We do this up front so that if we hit an error in the middle, we can */
     /* just free everything */
-    for (i=0; i<MAX_HSS_LEVELS; i++) {
+    for (i=0; i<MAX_HSS_LEVELS-1; i++) {
         w->signed_pk[i] = NULL;
     }
     for (i=0; i<MAX_HSS_LEVELS; i++) {
@@ -339,9 +339,9 @@ signed long initial_mem_target = mem_target; /* DEBUG HACK */
             /* multiple of the default subtree size.  We could make the aux */
             /* data logic smarter to handle this corner case, but, well, */
             /* it's a corner csae */
-            int subtree_size = hss_smallest_subtree_size(level_height[i], 0,
-                                                         hash_size[i]);
-            if (j % subtree_size != 0) continue;
+            int only_subtree_size = hss_smallest_subtree_size(level_height[i],
+                                                         0, hash_size[i]);
+            if (j % only_subtree_size != 0) continue;
         } else {
             /* Make sure this size will send enough updates to our parent */
             merkle_index_t updates_generated = compute_updates_generated(
@@ -463,7 +463,7 @@ printf( "Allocation = %ld\n", initial_mem_target - mem_target + best_mem ); /* D
         unsigned top_subtree_size = h0 - (subtree_levels[i]-1)*subtree_size[i];
         tree->top_subtree_size = top_subtree_size;
 
-        unsigned j, k;
+        unsigned k;
         for (j=0; j<MAX_SUBLEVELS; j++)
             for (k=0; k<NUM_SUBTREE; k++)
                 tree->subtree[j][k] = NULL;
@@ -546,7 +546,7 @@ void hss_free_working_key(struct hss_working_key *w) {
         }
         free(tree);
     }
-    for (i=0; i<MAX_HSS_LEVELS; i++) {
+    for (i=0; i<MAX_HSS_LEVELS-1; i++) {
         free(w->signed_pk[i]);
     }
     free(w->stack);

@@ -15,7 +15,7 @@
 #include "sha256.h"
 #include "endian.h"
 
-#if !USE_OPENSSL
+#if !USE_OPENSSL && !defined(EXT_SHA256_H)
 
 /* If we don't have OpenSSL, here's a SHA256 implementation */
 #define SHA256_FINALCOUNT_SIZE  8
