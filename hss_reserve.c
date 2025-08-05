@@ -165,7 +165,7 @@ bool hss_reserve_signature(
 
     sequence_t new_reserve_count;  /* This is what the new reservation */
                      /* setting would be (if we accept the reservation) */
-    if (current_count > w->max_count - sigs_to_reserve) {
+    if (current_count + sigs_to_reserve > w->max_count) {
         /* Not that many sigantures left */
 	/* We can't promise to be able to generate that many signatures */
         info->error_code = hss_error_not_that_many_sigs_left;

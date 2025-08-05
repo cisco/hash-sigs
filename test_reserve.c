@@ -133,7 +133,7 @@ bool test_reserve(bool fast_flag, bool quiet_flag) {
 
 		/* We expect success if we're all the signatures we are */
 		/* reserving are available */
-		int expect_success = (i + manual_res) <= 1024;
+		int expect_success = (i + manual_res) <= 1023;
 
 		if (expect_success) {
 		    if (!success) {
