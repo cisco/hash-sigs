@@ -115,7 +115,7 @@ static unsigned memcmp_consttime( const void *a, const void *b, size_t n ) {
     const unsigned char *p = a;
     const unsigned char *q = b;
     while (n--) {
-	sum += *p++ ^ *q++;
+	sum |= *p++ ^ *q++;
     }
     return sum;
 }
