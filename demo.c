@@ -148,7 +148,7 @@ bool do_rand( void *output, size_t len ) {
  */
 static bool update_private_key( unsigned char *private_key,
                                size_t len_private_key, void *filename) {
-    FILE *f = fopen( filename, "r+" );
+    FILE *f = fopen( filename, "rb+" );
     if (!f) {
         /* Open failed, possibly because the file didn't exist */
         f = fopen( filename, "wb" );
