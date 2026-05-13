@@ -53,7 +53,9 @@ static enum subtree_build_status subtree_add_next_node(
     const unsigned char *seed = (next_tree ? tree->seed_next : tree->seed);
     struct seed_derive derive;
     if (!hss_seed_derive_init( &derive, tree->lm_type, tree->lm_ots_type,
-                       I, seed )) return subtree_got_error;
+                       I, seed, hss_seed_size(tree->lm_type) )) {
+        return subtree_got_error;
+    }
     hss_seed_derive_set_q(&derive, r);
     if (!lm_ots_generate_public_key(tree->lm_ots_type, I,
                    r, &derive, pub_key + LEAF_PK, ots_len)) {
@@ -64,7 +66,7 @@ static enum subtree_build_status subtree_add_next_node(
 
     /* Hash it to form the leaf node */
     union hash_context ctx;
-    hss_hash_ctx( cur_val, tree->h, &ctx, pub_key, LEAF_LEN(hash_size));
+    hss_hash_ctx( cur_val, tree->h, &ctx, pub_key, LEAF_LEN(ots_len));
 
         /* Where in the subtree we store the values */
     merkle_index_t subtree_index = subtree->current_index +
@@ -185,8 +187,10 @@ static int generate_merkle_signature(
     } else {
         struct seed_derive derive;
         if (!hss_seed_derive_init( &derive,
-                            tree->lm_type, tree->lm_ots_type,
-                            tree->I, tree->seed )) return 0;
+                      tree->lm_type, tree->lm_ots_type, tree->I,
+                      tree->seed, hss_seed_size(tree->lm_type) )) {
+            return 0;
+        }
         hss_seed_derive_set_q(&derive, current_index);
         bool success = lm_ots_generate_signature( tree->lm_ots_type, tree->I,
                                     current_index, &derive,
@@ -467,7 +471,8 @@ bool hss_generate_signature(
     /* If we're given a raw private key, make sure it's the one we're */
     /* thinking of */
     if (!update_private_key) {
-        if (0 != memcmp( context, w->private_key, PRIVATE_KEY_LEN)) {
+        int h0_len = w->tree[0]->hash_size;
+        if (0 != memcmp( context, w->private_key, PRIVATE_KEY_LEN(h0_len))) {
             info->error_code = hss_error_key_mismatch;
             return false;   /* Private key mismatch */
         }
@@ -667,22 +672,32 @@ done_advancing:
         }
 
         /* Copy in the value of seed, I we'll use for the new tree */
-        memcpy( tree->seed, tree->seed_next, SEED_LEN );
+        memcpy( tree->seed, tree->seed_next, MAX_SEED_LEN );
         memcpy( tree->I, tree->I_next, I_LEN );
 
         /* Compute the new next I, which is derived from either the parent's */
         /* I or the parent's I_next value */
         merkle_index_t index = parent->current_index;
+        size_t parent_seed_len = hss_seed_size(parent->lm_type);
+        size_t child_seed_len = hss_seed_size(tree->lm_type);
         if (index == parent->max_index) {
-            hss_generate_child_seed_I_value(tree->seed_next, tree->I_next,
-                                       parent->seed_next, parent->I_next, 0,
+            if (!hss_generate_child_seed_I_value(tree->seed_next, tree->I_next,
+                                       parent->seed_next, parent_seed_len,
+                                       parent->I_next, child_seed_len, 0,
                                        parent->lm_type,
-                                       parent->lm_ots_type);
+                                       parent->lm_ots_type)) {
+                info->error_code = hss_error_internal;
+                goto failed;
+            }
         } else {
-            hss_generate_child_seed_I_value( tree->seed_next, tree->I_next,
-                                       parent->seed, parent->I, index+1,
+            if (!hss_generate_child_seed_I_value(tree->seed_next, tree->I_next,
+                                       parent->seed, parent_seed_len,
+                                       parent->I, child_seed_len, index+1,
                                        parent->lm_type,
-                                       parent->lm_ots_type);
+                                       parent->lm_ots_type)) {
+                info->error_code = hss_error_internal;
+                goto failed;
+            }
          }
 
          tree->current_index = 0;  /* We're starting this from scratch */
@@ -698,7 +713,7 @@ done_advancing:
     /* And we've set things up for the next signature... */
 
     if (trash_private_key) {
-        memset( w->private_key, PARM_SET_END, PRIVATE_KEY_LEN );
+        memset( w->private_key, PARM_SET_END, PRIVATE_KEY_LEN(MAX_SEED_LEN));
     }
 
     return true;
@@ -706,7 +721,7 @@ done_advancing:
 failed:
 
     if (trash_private_key) {
-        memset( w->private_key, PARM_SET_END, PRIVATE_KEY_LEN );
+        memset( w->private_key, PARM_SET_END, PRIVATE_KEY_LEN(MAX_SEED_LEN));
     }
 
     /* On failure, make sure that we don't return anything that might be */

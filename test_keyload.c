@@ -1,7 +1,7 @@
 /*
  * This test runs a fairly exhaustive test on the key loading functionality
  *
- * It runs 3000 parallel working keys of the same private key; working key i
+ * It runs 4000 parallel working keys of the same private key; working key i
  * will be loaded at step i, and then generate signatures from that point;
  * for example, at step 3, we'll have three working keys; one which was loaded
  * at index 0 (and has produced 3 signatures so far); one which was loaded
@@ -19,7 +19,7 @@
  * It also does a pretty decent test on whether our Merkle tree traversal
  * logic is always traversing properly.
  *
- * It takes 20 minutes to do a full test on my test machine 
+ * It takes 30 minutes to do a full test on my test machine 
  */
 #include "hss.h"
 #include "hash.h"
@@ -28,13 +28,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define PARM_SET  LMS_SHA256_N32_H5
-#define PARM_SET_2 LMOTS_SHA256_N32_W2
+/* Use these parm sets because they're the fastest */
+#define PARM_SET  LMS_SHA256_N24_H5
+#define PARM_SET_2 LMOTS_SHA256_N24_W2
 
 #define LEVELS 3
 
-#define MAX_ITER 3000
-#define FAST_ITER 300    /* Number of iterations to run in fast more */
+#define MAX_ITER 4000
+#define FAST_ITER 400    /* Number of iterations to run in fast mode */
 
 static bool generate_random(void *output, size_t length) {
     unsigned char *p = output;

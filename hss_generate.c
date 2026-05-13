@@ -254,15 +254,35 @@ bool hss_generate_working_key(
     }
 
     /* Read the private key */
-    unsigned char private_key[ PRIVATE_KEY_LEN ];
+    unsigned char private_key[ PRIVATE_KEY_LEN(MAX_SEED_LEN) ];
+#if SECRET_METHOD == 2
+    int try;
+    int seed_len = MIN_SEED_LEN;
+    for (try=0; try<2; try++) {
+        if (read_private_key) {
+            if (!read_private_key( private_key, PRIVATE_KEY_LEN(seed_len), context)) {
+                info->error_code = hss_error_private_key_read_failed;
+                goto failed;
+            }
+        } else {
+            memcpy( private_key, context, PRIVATE_KEY_LEN(seed_len) );
+        }
+        int hash_len = get_level0_lm_hash_len( private_key );
+        if (hash_len == 0) break;
+        if (hash_len == seed_len) break;  /* We read in the entire thing */
+        seed_len = hash_len;
+     }
+     if (try == 2) goto failed;
+#else
     if (read_private_key) {
-        if (!read_private_key( private_key, PRIVATE_KEY_LEN, context)) {
+        if (!read_private_key( private_key, PRIVATE_KEY_LEN(seed_len), context)) {
             info->error_code = hss_error_private_key_read_failed;
             goto failed;
         }
     } else {
-        memcpy( private_key, context, PRIVATE_KEY_LEN );
+        memcpy( private_key, context, PRIVATE_KEY_LEN(seed_len) );
     }
+#endif
 
     /*
      * Make sure that the private key and the allocated working key are
@@ -305,7 +325,8 @@ bool hss_generate_working_key(
     }
     hss_set_reserve_count(w, current_count);
 
-    memcpy( w->private_key, private_key, PRIVATE_KEY_LEN );
+    memcpy( w->private_key, private_key,
+                              PRIVATE_KEY_LEN(w->tree[0]->hash_size) );
 
     /* Initialize all the levels of the tree */
 
@@ -327,7 +348,8 @@ bool hss_generate_working_key(
         if (i == 0) {
             /* The root seed, I value is derived from the secret key */
             hss_generate_root_seed_I_value( tree->seed, tree->I,
-                                            private_key+PRIVATE_KEY_SEED );
+                                            private_key+PRIVATE_KEY_SEED,
+			                    tree->lm_type, tree->lm_ots_type );
             /* We don't use the I_next value */
         } else {
             /* The seed, I is derived from the parent's values */
@@ -335,23 +357,39 @@ bool hss_generate_working_key(
             /* Where we are in the Merkle tree */
             struct merkle_level *parent = w->tree[i-1];
             merkle_index_t index = parent->current_index;
+            size_t len_parent_seed = hss_seed_size( parent->lm_type );
+            size_t len_child_seed = hss_seed_size( tree->lm_type );
 
-            hss_generate_child_seed_I_value( tree->seed, tree->I,
-                                             parent->seed,  parent->I,
+            if (!hss_generate_child_seed_I_value( tree->seed, tree->I,
+                                             parent->seed,  len_parent_seed,
+                                             parent->I, len_child_seed,
                                              index, parent->lm_type,
-                                             parent->lm_ots_type );
+                                             parent->lm_ots_type )) {
+                info->error_code = hss_error_internal;
+                goto failed;
+            }
             /* The next seed, I is derived from either the parent's I */
             /* or the parent's next value */
             if (index == tree->max_index) {
-                hss_generate_child_seed_I_value( tree->seed_next, tree->I_next,
-                                            parent->seed_next,  parent->I_next,
+                if (!hss_generate_child_seed_I_value(
+                                            tree->seed_next, tree->I_next,
+                                            parent->seed_next, len_parent_seed,
+                                            parent->I_next, len_child_seed,
                                             0, parent->lm_type, 
-                                            parent->lm_ots_type);
+                                            parent->lm_ots_type)) {
+                    info->error_code = hss_error_internal;
+                    goto failed;
+                }
             } else {
-                hss_generate_child_seed_I_value( tree->seed_next, tree->I_next,
-                                            parent->seed,  parent->I,
+                if (!hss_generate_child_seed_I_value(
+                                            tree->seed_next, tree->I_next,
+                                            parent->seed,  len_parent_seed,
+                                            parent->I, len_child_seed,
                                             index+1, parent->lm_type,
-                                            parent->lm_ots_type);
+                                            parent->lm_ots_type)) {
+                    info->error_code = hss_error_internal;
+                    goto failed;
+                }
             }
         }
     }

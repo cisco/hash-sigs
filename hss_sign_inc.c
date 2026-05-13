@@ -62,14 +62,14 @@ bool hss_sign_init(
     /* Compute the value of C we'll use */
     merkle_index_t q = bottom->current_index;
     ctx->q = q;
-    int h = bottom->h;
-    ctx->h = h;
+    int h = ctx->h = bottom->lms_hash;
 
     struct seed_derive derive;
     if (!hss_seed_derive_init( &derive, bottom->lm_type, bottom->lm_ots_type,
-                       bottom->I, bottom->seed )) return false;
+                       bottom->I, bottom->seed,
+                       hss_seed_size( bottom->lm_type ) )) return false;
     hss_seed_derive_set_q(&derive, q);
-    lm_ots_generate_randomizer( ctx->c, bottom->hash_size, &derive );
+    lm_ots_generate_randomizer( ctx->c, bottom->lms_hash_size, &derive );
     hss_seed_derive_done(&derive);
 
     /*
@@ -96,7 +96,7 @@ bool hss_sign_init(
         unsigned q_bin[4]; put_bigendian( q_bin, q, 4 );
         memcpy( prefix + MESG_Q, q_bin, 4 ); /* q */
         SET_D( prefix + MESG_D, D_MESG );
-        int n = bottom->hash_size;
+        int n = bottom->lms_hash_size;
         memcpy( prefix + MESG_C, ctx->c, n );  /* C */
         hss_update_hash_context(h, &ctx->hash_ctx, prefix, MESG_PREFIX_LEN(n) );
     }
@@ -150,7 +150,7 @@ bool hss_sign_finalize(
         /* hss_generate_child_seed_I_value doesn't allow new values to */
         /* overwrite old ones */
     unsigned char I_buff[2][I_LEN];
-    unsigned char seed_buff[2][SEED_LEN];
+    unsigned char seed_buff[2][MAX_SEED_LEN];
 
     /* Q: should we double check the various fixed fields of the signatures */
     /* (e.g. the number of signed keys, the parameter sets? */
@@ -158,14 +158,16 @@ bool hss_sign_finalize(
     signature += 4;
 
     int i;
+    size_t seed_len = hss_seed_size( working_key->tree[0]->lm_type );
     for (i=0; i<L-1; i++) {
         merkle_index_t q = get_bigendian( signature, 4 );
         if (q > working_key->tree[i]->max_index) {
             hss_zeroize( seed_buff, sizeof seed_buff );
             return 0;
         }
+        size_t child_seed_len = hss_seed_size( working_key->tree[i+1]->lm_type );
         if (!hss_generate_child_seed_I_value( seed_buff[i&1], I_buff[i&1],
-                                         seed, I, q,
+                                         seed, seed_len, I, child_seed_len, q,
                                          working_key->tree[i]->lm_type,
                                          working_key->tree[i]->lm_ots_type )) {
             hss_zeroize( seed_buff, sizeof seed_buff );
@@ -175,6 +177,7 @@ bool hss_sign_finalize(
          
         seed = seed_buff[i&1];
         I = I_buff[i&1];
+        seed_len = child_seed_len;
 
         /* Step to the end of this signed key */
         signature += lm_get_signature_len( working_key->tree[i]->lm_type,
@@ -189,7 +192,8 @@ bool hss_sign_finalize(
         /* And then the LM-OTS signature */
 
     /* Copy in the C value into the signature */
-    memcpy( signature+4, ctx->c, 32 );
+    int n = hss_hash_length(ctx->h);
+    memcpy( signature+4, ctx->c, n );
 
     /* Generate the final hash */
     unsigned char hash[ MAX_HASH ];
@@ -200,7 +204,7 @@ bool hss_sign_finalize(
     param_set_t ots_type = working_key->tree[i]->lm_ots_type;
     struct seed_derive derive;
     bool success = hss_seed_derive_init( &derive, lm_type, ots_type,
-                          I, seed );
+                          I, seed, seed_len );
     if (success) {
         hss_seed_derive_set_q( &derive, ctx->q );
         success = lm_ots_generate_signature( 
