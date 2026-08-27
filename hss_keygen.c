@@ -200,8 +200,19 @@ bool hss_generate_private_key(
     /* small backup buffer */
     unsigned char worse_case_buffer[ 4*MAX_HASH ];
     if (!dest) {
-        dest = worse_case_buffer;
-        /* level == 2 if we reach here, so the buffer is big enough */
+        /* The loop above runs while (level > 1), so it never selects level 1.
+         * If the only cached aux level is level 1 (odd tree heights with a
+         * small aux buffer) and no temp_buffer could be allocated, we fall
+         * through here with level == 1 (not 2, as the previous comment said).
+         * Writing into worse_case_buffer would leave expanded_aux_data->data[1]
+         * uncomputed, yet hss_finalize_aux_data would still HMAC it as valid.
+         * So, as the loop's first branch does, write straight into the aux
+         * area when this fallback level is one we are caching. */
+        if (expanded_aux_data && expanded_aux_data->data[level]) {
+            dest = expanded_aux_data->data[level];
+        } else {
+            dest = worse_case_buffer;
+        }
     }
 
     /*
