@@ -132,6 +132,15 @@ bool hss_validate_signature_init(
         return false;
     }
     ctx->h = h;
+
+    /* The bottom LM-OTS q and C fields are read straight out of the signature
+     * below; for a one-level key the per-level checks above never run, so make
+     * sure the signature is long enough before touching it. */
+    if (signature_len < 8 + n) {
+        ctx->status = info->error_code = hss_error_bad_signature;
+        return false;
+    }
+
     hss_init_hash_context( h, &ctx->hash_ctx );
     {
         unsigned char prefix[ MESG_PREFIX_MAXLEN ];
