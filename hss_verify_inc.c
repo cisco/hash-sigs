@@ -62,11 +62,11 @@ bool hss_validate_signature_init(
 
     /* Validate the upper levels of the signature */
     struct thread_collection *col = NULL;
+    enum hss_error_code got_error = hss_error_none;
+    struct verify_detail detail;
+    detail.got_error = &got_error;
     if (levels > 1) {
         col = hss_thread_init(info->num_threads);
-        enum hss_error_code got_error = hss_error_none;
-        struct verify_detail detail;
-        detail.got_error = &got_error;
 
         /* Scan through the signature, kicking off the tasks to validate it */
         /* as we go.  Note that we don't validate the bottom level yet */
