@@ -172,7 +172,7 @@ bool hss_generate_private_key(
     unsigned level;
     unsigned char *dest = 0;  /* The area we actually write to */
     void *temp_buffer = 0;  /* The buffer we need to free when done */
-    for (level = h0-1; level > 1; level--) {
+    for (level = h0-1; level > 0; level--) {
             /* If our bottom-most aux data is at this level, we want it */
         if (expanded_aux_data && expanded_aux_data->data[level]) {
                 /* Write directly into the aux area */
@@ -201,7 +201,10 @@ bool hss_generate_private_key(
     unsigned char worse_case_buffer[ 4*MAX_HASH ];
     if (!dest) {
         dest = worse_case_buffer;
-        /* level == 2 if we reach here, so the buffer is big enough */
+        /* The loop above now runs while (level > 0), so a cached level-1 aux
+         * node is written directly into the aux area by the loop's first
+         * branch.  The only way to reach this fallback is level == 0 (a single
+         * node), so worse_case_buffer is big enough. */
     }
 
     /*
