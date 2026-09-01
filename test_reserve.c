@@ -192,7 +192,7 @@ bool test_reserve(bool fast_flag, bool quiet_flag) {
                 }
             }
             char message[ 100 ];
-            size_t len_message = sprintf( message, "Message #%d", i );
+            size_t len_message = snprintf( message, sizeof message, "Message #%d", i );
             got_update = false;
             struct hss_extra_info info = { 0 };
             unsigned char signature[ 16000 ];
