@@ -747,6 +747,257 @@ static int advance(const char *keyname, const char *text_advance) {
     return success;
 }
 
+/*
+ * PEM import/export for HSS/LMS public keys (issue #34).
+ *
+ * A public key is carried in an RFC 5280 SubjectPublicKeyInfo:
+ *    SEQUENCE {
+ *        SEQUENCE { OBJECT IDENTIFIER 1.2.840.113549.1.9.16.3.17 }
+ *        BIT STRING <the RFC 8554 public key, u32str(L) || lms_public_key>
+ *    }
+ * using the id-alg-hss-lms-hashsig OID, with the parameters field absent and
+ * the public key placed in the bit string with no inner OCTET STRING, per
+ * RFC 9802.  On import we also accept the older form that wrapped the key in
+ * an OCTET STRING inside the bit string (which the original RFC 8708 ASN.1
+ * could be read to require), so keys from such tools still load.  The wrapper
+ * is a fixed template around a short public key, so this needs no general
+ * ASN.1 library.
+ */
+static const unsigned char hss_lms_oid[] = {
+    0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x09, 0x10, 0x03, 0x11 };
+
+static const char base64_alphabet[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/* Base64-encode 'len' bytes into 'out' as 64-column lines, NUL terminated */
+static void base64_encode( const unsigned char *in, size_t len, char *out ) {
+    size_t o = 0, col = 0, i;
+    for (i = 0; i + 3 <= len; i += 3) {
+        unsigned long v = ((unsigned long)in[i] << 16) |
+                          ((unsigned long)in[i+1] << 8) | in[i+2];
+        out[o++] = base64_alphabet[(v >> 18) & 0x3f];
+        out[o++] = base64_alphabet[(v >> 12) & 0x3f];
+        out[o++] = base64_alphabet[(v >>  6) & 0x3f];
+        out[o++] = base64_alphabet[ v        & 0x3f];
+        col += 4; if (col == 64) { out[o++] = '\n'; col = 0; }
+    }
+    if (len - i == 1) {
+        unsigned long v = (unsigned long)in[i] << 16;
+        out[o++] = base64_alphabet[(v >> 18) & 0x3f];
+        out[o++] = base64_alphabet[(v >> 12) & 0x3f];
+        out[o++] = '='; out[o++] = '='; col += 4;
+    } else if (len - i == 2) {
+        unsigned long v = ((unsigned long)in[i] << 16) |
+                          ((unsigned long)in[i+1] << 8);
+        out[o++] = base64_alphabet[(v >> 18) & 0x3f];
+        out[o++] = base64_alphabet[(v >> 12) & 0x3f];
+        out[o++] = base64_alphabet[(v >>  6) & 0x3f];
+        out[o++] = '='; col += 4;
+    }
+    if (col != 0) out[o++] = '\n';
+    out[o] = '\0';
+}
+
+static int base64_value( char c ) {
+    if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+    if (c >= '0' && c <= '9') return c - '0' + 52;
+    if (c == '+') return 62;
+    if (c == '/') return 63;
+    return -1;
+}
+
+/* Base64-decode, skipping whitespace and stopping at '='; returns the number
+ * of bytes written, or (size_t)-1 on a bad character or overflow */
+static size_t base64_decode( const char *in, size_t len,
+                             unsigned char *out, size_t out_max ) {
+    unsigned long acc = 0; int bits = 0; size_t o = 0, i;
+    for (i = 0; i < len; i++) {
+        char c = in[i];
+        if (c == '=') break;
+        if (c == '\n' || c == '\r' || c == ' ' || c == '\t') continue;
+        int v = base64_value( c );
+        if (v < 0) return (size_t)-1;
+        acc = (acc << 6) | (unsigned long)v; bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            if (o >= out_max) return (size_t)-1;
+            out[o++] = (unsigned char)((acc >> bits) & 0xff);
+        }
+    }
+    return o;
+}
+
+/* Wrap a raw HSS public key in a SubjectPublicKeyInfo; returns the DER length,
+ * or 0 if the key is too large for the single-byte lengths used here (an HSS
+ * public key is about 60 bytes, well within that) */
+static size_t spki_wrap( const unsigned char *pub, size_t publen,
+                         unsigned char *out ) {
+    size_t oidlen = sizeof hss_lms_oid;
+    size_t algid  = 2 + 2 + oidlen;    /* SEQUENCE { OID } */
+    size_t bitstr = 2 + 1 + publen;    /* BIT STRING { 00 || pub } */
+    size_t body   = algid + bitstr;
+    if (publen + 1 > 0x7f || body > 0x7f) return 0;
+    size_t o = 0;
+    out[o++] = 0x30; out[o++] = (unsigned char)body;
+    out[o++] = 0x30; out[o++] = (unsigned char)(2 + oidlen);
+    out[o++] = 0x06; out[o++] = (unsigned char)oidlen;
+    memcpy( out + o, hss_lms_oid, oidlen ); o += oidlen;
+    out[o++] = 0x03; out[o++] = (unsigned char)(publen + 1); out[o++] = 0x00;
+    memcpy( out + o, pub, publen ); o += publen;
+    return o;
+}
+
+/* Read a one-byte DER length and advance *p; returns -1 on a multi-byte or
+ * malformed length (this fixed template never needs multi-byte lengths) */
+static long der_len( const unsigned char **p, const unsigned char *end ) {
+    if (*p >= end) return -1;
+    unsigned char b = *(*p)++;
+    if (b & 0x80) return -1;
+    return b;
+}
+
+/* Extract the raw HSS public key from a SubjectPublicKeyInfo; returns the key
+ * length, or 0 on any parse error or OID mismatch.  Accepts both the raw bit
+ * string form (RFC 9802) and the older inner-OCTET-STRING form */
+static size_t spki_unwrap( const unsigned char *der, size_t derlen,
+                           unsigned char *out, size_t out_max ) {
+    const unsigned char *p = der, *end = der + derlen;
+    long l;
+    if (p >= end || *p++ != 0x30) return 0;              /* outer SEQUENCE */
+    if ((l = der_len(&p, end)) < 0 || p + l > end) return 0;
+    end = p + l;
+    if (p >= end || *p++ != 0x30) return 0;              /* AlgorithmIdentifier */
+    if ((l = der_len(&p, end)) < 0 || p + l > end) return 0;
+    const unsigned char *alg_end = p + l;
+    if (p >= alg_end || *p++ != 0x06) return 0;          /* OBJECT IDENTIFIER */
+    if ((l = der_len(&p, alg_end)) < 0 || p + l > alg_end) return 0;
+    if ((size_t)l != sizeof hss_lms_oid ||
+                     0 != memcmp( p, hss_lms_oid, (size_t)l )) return 0;
+    p = alg_end;                                         /* parameters are absent */
+    if (p >= end || *p++ != 0x03) return 0;              /* BIT STRING */
+    if ((l = der_len(&p, end)) < 1 || p + l > end) return 0;
+    const unsigned char *bit_end = p + l;
+    if (*p++ != 0x00) return 0;                          /* unused bits */
+    if (p < bit_end && *p == 0x04) {                     /* legacy OCTET STRING */
+        const unsigned char *q = p + 1;
+        long il = der_len(&q, bit_end);
+        if (il >= 0 && q + il == bit_end) p = q;
+    }
+    size_t publen = (size_t)(bit_end - p);
+    if (publen == 0 || publen > out_max) return 0;
+    memcpy( out, p, publen );
+    return publen;
+}
+
+/*
+ * This function implements the 'exportpem' command; it reads keyname.pub and
+ * writes the same public key as keyname.pem
+ */
+static int export_pem( const char *keyname ) {
+    size_t namelen = strlen(keyname) + sizeof ".pub" + 1;
+    char *pubname = malloc(namelen), *pemname = malloc(namelen);
+    if (!pubname || !pemname) {
+        printf( "Error: malloc failure\n" ); free(pubname); free(pemname); return 0;
+    }
+    sprintf( pubname, "%s.pub", keyname );
+    sprintf( pemname, "%s.pem", keyname );
+    size_t publen;
+    unsigned char *pub = read_file( pubname, &publen );
+    int ok = 0;
+    if (!pub) {
+        printf( "Error: unable to read %s.pub\n", keyname );
+    } else {
+        unsigned char der[256];
+        size_t derlen = spki_wrap( pub, publen, der );
+        if (!derlen) {
+            printf( "Error: public key too large to wrap\n" );
+        } else {
+            char b64[512];
+            base64_encode( der, derlen, b64 );
+            FILE *f = fopen( pemname, "w" );
+            if (!f) {
+                printf( "Error: unable to write %s.pem\n", keyname );
+            } else {
+                int werr = fprintf( f, "-----BEGIN PUBLIC KEY-----\n%s"
+                                       "-----END PUBLIC KEY-----\n", b64 ) < 0;
+                if (fclose( f ) != 0) werr = 1;
+                if (werr) {
+                    printf( "Error: unable to write %s.pem\n", keyname );
+                } else {
+                    printf( "Wrote %s.pem\n", keyname );
+                    ok = 1;
+                }
+            }
+        }
+        free( pub );
+    }
+    free( pubname ); free( pemname );
+    return ok;
+}
+
+/*
+ * This function implements the 'importpem' command; it reads keyname.pem and
+ * writes the raw public key as keyname.pub (which 'verify' can then use)
+ */
+static int import_pem( const char *keyname ) {
+    size_t namelen = strlen(keyname) + sizeof ".pem" + 1;
+    char *pubname = malloc(namelen), *pemname = malloc(namelen);
+    if (!pubname || !pemname) {
+        printf( "Error: malloc failure\n" ); free(pubname); free(pemname); return 0;
+    }
+    sprintf( pubname, "%s.pub", keyname );
+    sprintf( pemname, "%s.pem", keyname );
+    size_t rawlen;
+    unsigned char *raw = read_file( pemname, &rawlen );
+    int ok = 0;
+    if (!raw) {
+        printf( "Error: unable to read %s.pem\n", keyname );
+    } else {
+        char *pem = malloc( rawlen + 1 );
+        if (!pem) {
+            printf( "Error: malloc failure\n" );
+        } else {
+            memcpy( pem, raw, rawlen ); pem[rawlen] = '\0';
+            const char *begin = strstr( pem, "-----BEGIN PUBLIC KEY-----" );
+            const char *end   = strstr( pem, "-----END PUBLIC KEY-----" );
+            if (!begin || !end || end < begin) {
+                printf( "Error: %s.pem is not a PUBLIC KEY file\n", keyname );
+            } else {
+                begin += strlen( "-----BEGIN PUBLIC KEY-----" );
+                unsigned char der[512];
+                size_t derlen = base64_decode( begin, (size_t)(end - begin),
+                                               der, sizeof der );
+                if (derlen == (size_t)-1) {
+                    printf( "Error: bad base64 in %s.pem\n", keyname );
+                } else {
+                    unsigned char pub[256];
+                    size_t publen = spki_unwrap( der, derlen, pub, sizeof pub );
+                    if (!publen) {
+                        printf( "Error: %s.pem is not an HSS/LMS public key\n",
+                                keyname );
+                    } else {
+                        FILE *f = fopen( pubname, "w" );
+                        if (!f || 1 != fwrite( pub, publen, 1, f )) {
+                            printf( "Error: unable to write %s.pub\n", keyname );
+                            if (f) fclose( f );
+                        } else {
+                            fclose( f );
+                            printf( "Wrote %s.pub (%u bytes)\n", keyname,
+                                    (unsigned)publen );
+                            ok = 1;
+                        }
+                    }
+                }
+            }
+            free( pem );
+        }
+        free( raw );
+    }
+    free( pubname ); free( pemname );
+    return ok;
+}
+
 static void usage(char *program) {
     printf( "Usage:\n" );
     printf( " %s genkey [keyname]\n", program );
@@ -754,6 +1005,8 @@ static void usage(char *program) {
     printf( " %s sign [keyname] [files to sign]\n", program );
     printf( " %s verify [keyname] [files to verify]\n", program );
     printf( " %s advance [keyname] [amount of advance]\n", program );
+    printf( " %s exportpem [keyname]\n", program );
+    printf( " %s importpem [keyname]\n", program );
 }
 
 static int get_integer(const char **p) {
@@ -955,6 +1208,28 @@ int main(int argc, char **argv) {
         }
         if (!advance( argv[2], argv[3] )) {
             printf( "Error advancing\n" );
+        }
+        return 0;
+    }
+    if (0 == strcmp( argv[1], "exportpem" )) {
+        if (argc != 3) {
+            printf( "Error: missing keyname\n" );
+            usage(argv[0]);
+            return 0;
+        }
+        if (!export_pem( argv[2] )) {
+            printf( "Error exporting PEM\n" );
+        }
+        return 0;
+    }
+    if (0 == strcmp( argv[1], "importpem" )) {
+        if (argc != 3) {
+            printf( "Error: missing keyname\n" );
+            usage(argv[0]);
+            return 0;
+        }
+        if (!import_pem( argv[2] )) {
+            printf( "Error importing PEM\n" );
         }
         return 0;
     }
