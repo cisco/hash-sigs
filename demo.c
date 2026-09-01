@@ -885,7 +885,7 @@ int main(int argc, char **argv) {
             if ((s = check_prefix( argv[i], "seed=" ))) {
                 if (seedbits) {
                     printf( "Error: seed specified twice\n" );
-                    return 0;
+                    return 1;
                 }
                 seedbits = s;
                 continue;
@@ -893,7 +893,7 @@ int main(int argc, char **argv) {
             if ((s = check_prefix( argv[i], "i=" ))) {
                 if (i_value) {
                     printf( "Error: i specified twice\n" );
-                    return 0;
+                    return 1;
                 }
                 i_value = s;
                 continue;
@@ -908,20 +908,21 @@ int main(int argc, char **argv) {
             }
             printf( "Error: unexpected argument after parmset\n" );
             usage(argv[0]);
-            return 0;
+            return 1;
         }
         if (!keyname) {
             printf( "Error: missing keyname argument\n" );
             usage(argv[0]);
-            return 0;
+            return 1;
         }
         if (!seedbits != !i_value) {
             printf( "Error: must either specified both seed and i, or neither\n" );
-            return 0;
+            return 1;
         }
 
         if (!keygen( keyname, parmname )) {
             printf( "Error creating keys\n" );
+            return 1;
         }
         return 0;
     }
@@ -929,10 +930,11 @@ int main(int argc, char **argv) {
         if (argc < 4) {
             printf( "Error: mssing keyname and file argument\n" );
             usage(argv[0]);
-            return 0;
+            return 1;
         }
         if (!sign( argv[2], &argv[3] )) {
             printf( "Error signing\n" );
+            return 1;
         }
         return 0;
     }
@@ -940,10 +942,11 @@ int main(int argc, char **argv) {
         if (argc < 4) {
             printf( "Error: mssing keyname and file argument\n" );
             usage(argv[0]);
-            return 0;
+            return 1;
         }
         if (!verify( argv[2], &argv[3] )) {
             printf( "Error verifying\n" );
+            return 1;
         }
         return 0;
     }
@@ -951,10 +954,11 @@ int main(int argc, char **argv) {
         if (argc != 4) {
             printf( "Error: mssing amount to device the file\n" );
             usage(argv[0]);
-            return 0;
+            return 1;
         }
         if (!advance( argv[2], argv[3] )) {
             printf( "Error advancing\n" );
+            return 1;
         }
         return 0;
     }
