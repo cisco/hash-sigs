@@ -200,7 +200,7 @@ void hss_seed_derive_set_q( struct seed_derive *derive, merkle_index_t q ) {
         hss_hash_ctx( derive->q_seed[j], HASH, &ctx, buffer, QTREE_LEN );
     }
 
-    hss_zeroize( buffer, PRG_LEN(SEED_LEN) );
+    hss_zeroize( buffer, QTREE_LEN );
     hss_zeroize( &ctx, sizeof ctx );
 }
 

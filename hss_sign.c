@@ -17,6 +17,19 @@
 #include "hss_derive.h"
 
 /*
+ * A mask of the low 'shift' bits.  When 'shift' reaches the width of
+ * sequence_t we return all ones rather than shifting by the full width,
+ * which would be undefined behavior; a Merkle hierarchy that tall cannot be
+ * exhausted within the 2**64 usable signatures in any case.
+ */
+static sequence_t low_order_mask(unsigned shift) {
+    if (shift >= 8 * sizeof(sequence_t)) {
+        return ~(sequence_t)0;
+    }
+    return ((sequence_t)1 << shift) - 1;
+}
+
+/*
  * This adds one leaf to the building and next subtree.
  */
 enum subtree_build_status {
@@ -594,7 +607,7 @@ bool hss_generate_signature(
     for (i = w->levels-1; i>=0; i--, merkle_levels_below += tree->level) {
         tree = w->tree[i];
 
-        if (0 == (cur_count & (((sequence_t)1 << (merkle_levels_below + tree->level))-1))) {
+        if (0 == (cur_count & low_order_mask(merkle_levels_below + tree->level))) {
             /* We exhausted this tree */
             if (i == 0) {
                 /* We've run out of signatures; we've already caught this */
@@ -614,7 +627,7 @@ bool hss_generate_signature(
         int j;
         for (j = tree->sublevels-1; j>0; j--) {
             subtree_levels_below += tree->subtree_size;
-            if (0 != (cur_count & (((sequence_t)1 << (merkle_levels_below + subtree_levels_below))-1))) {
+            if (0 != (cur_count & low_order_mask(merkle_levels_below + subtree_levels_below))) {
                 /* We're in the middle of this subtree */
                 goto done_advancing;
             }
