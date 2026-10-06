@@ -185,7 +185,7 @@ signed long initial_mem_target = mem_target; /* DEBUG HACK */
     /* Initialize all the allocated data structures to NULL */
     /* We do this up front so that if we hit an error in the middle, we can */
     /* just free everything */
-    for (i=0; i<MAX_HSS_LEVELS-1; i++) {
+    for (i=0; i<MAX_HSS_LEVELS; i++) {
         w->signed_pk[i] = NULL;
     }
     for (i=0; i<MAX_HSS_LEVELS; i++) {
@@ -543,7 +543,7 @@ void hss_free_working_key(struct hss_working_key *w) {
         }
         free(tree);
     }
-    for (i=0; i<MAX_HSS_LEVELS-1; i++) {
+    for (i=0; i<MAX_HSS_LEVELS; i++) {
         free(w->signed_pk[i]);
     }
     free(w->stack);
