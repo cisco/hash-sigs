@@ -240,7 +240,7 @@ static void compute_seed_derive( unsigned char *result, unsigned hash,
     hss_update_hash_context( hash, ctx, seed, SEED_LEN );
     hss_finalize_hash_context( hash, ctx, result );
 
-    hss_zeroize( &ctx, sizeof ctx );
+    hss_zeroize( ctx, sizeof *ctx );
 }
 
 static void xor_key( unsigned char *key, unsigned xor_val, unsigned len_key) {
