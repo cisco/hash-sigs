@@ -149,7 +149,7 @@ bool test_stat(bool fast_flag, bool quiet_flag) {
                 goto failed;
             }
 
-            sig = malloc(sig_len); if (!sig) goto failed;
+            sig = malloc(sig_len); if (!sig) { hss_free_working_key(w); goto failed; }
             
             for (i=0; i<HASH_PER_MERKLE_TREE; i++) {
                 static char test_message[3] = "abc";
@@ -218,7 +218,7 @@ bool test_stat(bool fast_flag, bool quiet_flag) {
                                   HASH_PER_PK, region, k, i, d);
                      region++;
                  }
-if (sig_offset != sig_len) { printf( "Oops: we got something wrong here: %d %d\n", (int)sig_offset, (int)sig_len ); return false; }
+if (sig_offset != sig_len) { printf( "Oops: we got something wrong here: %d %d\n", (int)sig_offset, (int)sig_len ); hss_free_working_key(w); goto failed; }
 
                  if (i == 31) break;
                  if (d > 1) {
@@ -242,6 +242,7 @@ if (sig_offset != sig_len) { printf( "Oops: we got something wrong here: %d %d\n
                  }
             }
             hss_free_working_key(w);
+            free(sig); sig = 0;
         }
     }
 
