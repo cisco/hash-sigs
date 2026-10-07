@@ -67,7 +67,10 @@ bool hss_sign_init(
 
     struct seed_derive derive;
     if (!hss_seed_derive_init( &derive, bottom->lm_type, bottom->lm_ots_type,
-                       bottom->I, bottom->seed )) return false;
+                       bottom->I, bottom->seed )) {
+        info->error_code = hss_error_internal;
+        return false;
+    }
     hss_seed_derive_set_q(&derive, q);
     lm_ots_generate_randomizer( ctx->c, bottom->hash_size, &derive );
     hss_seed_derive_done(&derive);
