@@ -208,7 +208,10 @@ void *read_file( const char *filename, size_t *len ) {
 #define FILE_INCREMENT 20000
     unsigned alloc_len = FILE_INCREMENT;
     unsigned char *p = malloc( alloc_len );
-    if (!p) return 0;
+    if (!p) {
+        fclose(f);
+        return 0;
+    }
 
     unsigned cur_len = 0;
     for (;;) {
@@ -217,6 +220,7 @@ void *read_file( const char *filename, size_t *len ) {
             unsigned char *q = realloc( p, alloc_len + FILE_INCREMENT );
             if (!q) {
                 free(p);
+                fclose(f);
                 return 0;
             }
             p = q;
@@ -229,6 +233,7 @@ void *read_file( const char *filename, size_t *len ) {
     }
 
     if (len) *len = cur_len;
+    fclose(f);
     return p;
 }
 
@@ -607,6 +612,7 @@ static int verify(const char *keyname, char **files) {
         if (!sig_file_name) {
             printf( "Error: malloc failure\n" );
             free(public_key_filename);
+            free(pub);
             return 0;
         }
         sprintf( sig_file_name, "%s.sig", files[i] );
@@ -664,6 +670,7 @@ static int verify(const char *keyname, char **files) {
     }
 
     free(public_key_filename);
+    free(pub);
     return 1;
 }
 
