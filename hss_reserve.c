@@ -142,7 +142,7 @@ bool hss_reserve_signature(
      * reason we shouldn't support it
      */
     if (!update_private_key) {
-        if (0 != memcmp( context, w->private_key, PRIVATE_KEY_LEN)) {
+        if (0 != constant_time_equal( context, w->private_key, PRIVATE_KEY_LEN)) {
             info->error_code = hss_error_key_mismatch;
             return false;   /* Private key mismatch */
         }

@@ -480,7 +480,7 @@ bool hss_generate_signature(
     /* If we're given a raw private key, make sure it's the one we're */
     /* thinking of */
     if (!update_private_key) {
-        if (0 != memcmp( context, w->private_key, PRIVATE_KEY_LEN)) {
+        if (0 != constant_time_equal( context, w->private_key, PRIVATE_KEY_LEN)) {
             info->error_code = hss_error_key_mismatch;
             return false;   /* Private key mismatch */
         }
