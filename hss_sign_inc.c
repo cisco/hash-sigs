@@ -139,6 +139,10 @@ bool hss_sign_finalize(
         info->error_code = ctx->status;
         return false;
     }
+    if (!working_key) {
+        info->error_code = hss_error_got_null;
+        return false;
+    }
 
     /* Success or fail, we can't use the context any more */
     ctx->status = hss_error_ctx_already_used;
