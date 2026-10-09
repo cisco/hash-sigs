@@ -24,6 +24,10 @@ bool lm_ots_generate_public_key(
     if (!lm_ots_look_up_parameter_set( lm_ots_type, &h, &n, &w, &p, &ls ))
         return false;
 
+    /* Ensure the public key is at least the minimum size */
+    if (public_key_len < lm_ots_get_public_key_len(lm_ots_type))
+        return false;
+
     /* Start the hash that computes the final value */
     union hash_context public_ctx;
     hss_init_hash_context(h, &public_ctx);
