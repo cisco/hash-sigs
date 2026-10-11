@@ -211,7 +211,7 @@ bool hss_sign_finalize(
     if (success) {
         hss_seed_derive_set_q( &derive, ctx->q );
         success = lm_ots_generate_signature( 
-               ots_type, I, ctx->q, &derive, hash, 0, true,
+               ots_type, I, ctx->q, &derive, hash, MAX_HASH, true,
                signature, lm_ots_get_signature_len( ots_type ));
 
         hss_seed_derive_done( &derive );

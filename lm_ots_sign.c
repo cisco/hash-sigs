@@ -139,6 +139,9 @@ bool lm_ots_generate_signature(
         hss_update_hash_context(h, &ctx, message, message_len );
         hss_finalize_hash_context( h, &ctx, Q );
     } else {
+        if (message_len != n)
+            return false;
+
         memcpy( Q, message, n );
     }
 
