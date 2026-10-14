@@ -520,6 +520,11 @@ bool hss_generate_signature(
     struct thread_collection *col = hss_thread_init(info->num_threads);
     enum hss_error_code got_error = hss_error_none;
 
+    /* do_gen_sig advances the bottom tree's current_index, possibly in */
+    /* another thread, so note it now rather than reading it below while */
+    /* that thread may be updating it */
+    merkle_index_t bottom_index = w->tree[levels-1]->current_index;
+
     /* Generate the signature */
     {
         struct gen_sig_detail gen_detail;
@@ -548,7 +553,8 @@ bool hss_generate_signature(
                                /* order for at least one level */
     {
         struct merkle_level *tree = w->tree[levels-1];
-        merkle_index_t updates_before_end = tree->max_index - tree->current_index + 1;
+            /* Signatures left in this tree after this one */
+        merkle_index_t updates_before_end = tree->max_index - bottom_index;
         int h_subtree = tree->subtree_size;
         for (i=1; i<tree->sublevels; i++) {
             struct subtree *subtree = tree->subtree[i][BUILDING_TREE];
