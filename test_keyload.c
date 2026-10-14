@@ -122,7 +122,7 @@ if (len_signature == 0) return false;
 
         /* Generate a bunch of signatures of the same text */
         char text[ 100 ];
-        unsigned len_text = sprintf( text, "Message #%d", i );
+        unsigned len_text = snprintf( text, sizeof text, "Message #%d", i );
 
         if (!hss_generate_signature( w[0], NULL, private_key,
                 text, len_text,
