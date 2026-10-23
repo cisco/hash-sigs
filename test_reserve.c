@@ -12,7 +12,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-static int rand_seed;
+static unsigned rand_seed;
 static int my_rand(void) {
     rand_seed += rand_seed*rand_seed | 5;
     return rand_seed >> 9;
