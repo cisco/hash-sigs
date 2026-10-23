@@ -15,6 +15,12 @@ struct hss_working_key;
 /* This is a bitmap that lists which aux levels we have */
 typedef uint_fast32_t aux_level_t;
 
+/* The first byte (offset AUX_DATA_MARKER) of a saved aux blob is NO_AUX_DATA
+ * when the blob carries no aux data; otherwise it is the first byte of the
+ * saved aux level */
+#define AUX_DATA_MARKER 0
+#define NO_AUX_DATA  0x00
+
 /* This is the expanded version of the aux data */
 struct expanded_aux_data {
     unsigned char *data[ MAX_MERKLE_HEIGHT+1 ];
