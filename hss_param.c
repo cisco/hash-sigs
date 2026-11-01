@@ -237,7 +237,11 @@ int get_level0_lm_hash_len( const unsigned char *private_key ) {
     unsigned char c = private_key[PRIVATE_KEY_PARAM_SET];
     param_set_t lm = c;
     if (!unmap( &lm, lm_map )) return 0; 
+#if SECRET_METHOD == 2
+    return (int)hss_seed_size(lm);
+#else
     unsigned n;
     if (!lm_look_up_parameter_set(lm, 0, &n, 0)) return 0;
     return n;
+#endif
 }
