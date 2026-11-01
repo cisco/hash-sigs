@@ -7,6 +7,7 @@
 
 #include "hss.h"
 #include "test_hss.h"
+#include <string.h>
 
 bool test_testvector_1(void) {
     /* This is test case 1 */
@@ -1362,10 +1363,49 @@ bool test_testvector_5(void) {
     return verified;
 }
 
+static bool rand_acvp_sha256_192(void *output, size_t len) {
+    /* NIST ACVP seed (32 bytes) + I (16 bytes) = 48 bytes */
+    static const unsigned char seed_I[48] = {
+        0x86, 0x3a, 0x95, 0x14, 0x3b, 0x2f, 0x40, 0x7a,
+        0x88, 0x8b, 0x27, 0x1d, 0x8c, 0x66, 0xb9, 0x6f,
+        0xbb, 0x30, 0x95, 0x03, 0x52, 0x04, 0x3c, 0x7a,
+        0xce, 0x31, 0x17, 0x04, 0xe4, 0x89, 0x3c, 0x4e,
+        0x57, 0x12, 0x84, 0x64, 0x82, 0x95, 0xf8, 0xbe,
+        0x3e, 0xf8, 0x6d, 0x53, 0x82, 0x8f, 0xed, 0x4d
+    };
+    if (len > sizeof seed_I) return false;
+    memcpy(output, seed_I, len);
+    return true;
+}
+
+static bool dummy_update_acvp(unsigned char *priv_key, size_t len_priv_key, void *context) {
+    return true;
+}
+
+bool test_testvector_acvp_sha256_192(void) {
+    static const unsigned char expected_pubkey[] = {
+        0x00, 0x00, 0x00, 0x0a, 0x00, 0x00, 0x00, 0x06,
+        0x57, 0x12, 0x84, 0x64, 0x82, 0x95, 0xf8, 0xbe,
+        0x3e, 0xf8, 0x6d, 0x53, 0x82, 0x8f, 0xed, 0x4d,
+        0xba, 0x9a, 0x7b, 0x57, 0x5b, 0xa6, 0x34, 0xda,
+        0xc1, 0x38, 0xc7, 0xd8, 0xc3, 0xf9, 0x03, 0xbd,
+        0xa3, 0x44, 0xb5, 0x32, 0x30, 0xd9, 0x3c, 0x6f
+    };
+    param_set_t lm = LMS_SHA256_N24_H5;
+    param_set_t ots = LMOTS_SHA256_N24_W2;
+    unsigned char pubkey[4 + sizeof expected_pubkey];
+    if (!hss_generate_private_key(rand_acvp_sha256_192, 1, &lm, &ots, dummy_update_acvp, NULL,
+                                 pubkey, sizeof pubkey, NULL, 0, NULL)) {
+        return false;
+    }
+    return memcmp(pubkey + 4, expected_pubkey, sizeof expected_pubkey) == 0;
+}
+
 bool test_testvector(bool fast_flag, bool quiet_flag) {
     return test_testvector_1() &&
            test_testvector_2() &&
            test_testvector_3() &&
 	   test_testvector_4() &&
-	   test_testvector_5();
+	   test_testvector_5() &&
+	   test_testvector_acvp_sha256_192();
 }

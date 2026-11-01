@@ -125,9 +125,12 @@ bool hss_generate_root_seed_I_value(unsigned char *seed, unsigned char *I,
  */
 size_t hss_seed_size(param_set_t lm) {
 #if SECRET_METHOD == 2
-    unsigned m;   /* Length of the seed depends on the hash function that LM uses */
-    if (!lm_look_up_parameter_set( lm, 0, &m, 0 )) {
+    unsigned h, m;   /* In ACVP / SP 800-208, SHA-256 uses 256-bit (32-byte) seed */
+    if (!lm_look_up_parameter_set( lm, &h, &m, 0 )) {
         return 0;
+    }
+    if (h == HASH_SHA256 || h == HASH_SHA256_24) {
+        return 32;
     }
     return m;
 #else

@@ -42,6 +42,7 @@
 #include "hss.h"
 #include "hss_verify_inc.h"
 #include "hss_sign_inc.h"
+size_t hss_seed_size(param_set_t lm_param);
 
    /* When we generate a key, these are the parameters we use (unless the */
    /* user has specified otherwise). For signature generation/verification, */
@@ -300,6 +301,7 @@ static int keygen(const char *keyname, const char *parm_set) {
                          &upper_hash_size)) {
         return 0;
     }
+    upper_hash_size = hss_seed_size(lm_array[0]);
 
     /* Tell the user how we interpreted the parameter set he gave us */
     list_parameter_set( levels, lm_array, ots_array, aux_size );
