@@ -5,8 +5,12 @@
  * validate ourselves against another implementation
  */
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include "hss.h"
 #include "test_hss.h"
+#include "config.h"
 
 bool test_testvector_1(void) {
     /* This is test case 1 */
@@ -386,6 +390,78 @@ bool test_testvector_1(void) {
 
     return verified;
 }
+
+#if SECRET_METHOD == 2
+/*
+ * Test case 2 also lists the SEED and I of the top level LMS tree.  With
+ * SECRET_METHOD 2, that is exactly what our private key holds, and the
+ * second level SEED and I and the C randomizers all follow from it.  So
+ * we can check that we regenerate the public key and the signature bit for
+ * bit, not just that we accept them
+ */
+static const unsigned char tc2_seed_I[] = {
+    /* Top level SEED */
+    0x55,0x8b,0x89,0x66,0xc4,0x8a,0xe9,0xcb,
+    0x89,0x8b,0x42,0x3c,0x83,0x44,0x3a,0xae,
+    0x01,0x4a,0x72,0xf1,0xb1,0xab,0x5c,0xc8,
+    0x5c,0xf1,0xd8,0x92,0x90,0x3b,0x54,0x39,
+    /* Top level I */
+    0xd0,0x8f,0xab,0xd4,0xa2,0x09,0x1f,0xf0,
+    0xa8,0xcb,0x4e,0xd8,0x34,0xe7,0x45,0x34,
+};
+
+static bool tc2_rand(void *output, size_t length) {
+    if (length != sizeof tc2_seed_I) return false;
+    memcpy( output, tc2_seed_I, length );
+    return true;
+}
+
+static bool test_testvector_2_regen(
+                 const unsigned char *public_key, size_t len_public_key,
+                 const unsigned char *message, size_t len_message,
+                 const unsigned char *signature, size_t len_signature) {
+    param_set_t lm_type[2] = { LMS_SHA256_N32_H10, LMS_SHA256_N32_H5 };
+    param_set_t ots_type[2] = { LMOTS_SHA256_N32_W4, LMOTS_SHA256_N32_W8 };
+    unsigned char private_key[HSS_MAX_PRIVATE_KEY_LEN];
+    unsigned char gen_public_key[HSS_MAX_PUBLIC_KEY_LEN];
+
+    if (hss_get_public_key_len( 2, lm_type, ots_type ) != len_public_key ||
+        hss_get_signature_len( 2, lm_type, ots_type ) != len_signature) {
+        return false;
+    }
+    if (!hss_generate_private_key( tc2_rand, 2, lm_type, ots_type,
+                       NULL, private_key, gen_public_key, len_public_key,
+                       NULL, 0, 0 )) {
+        return false;
+    }
+    if (0 != memcmp( gen_public_key, public_key, len_public_key )) {
+        printf( "Test case 2: generated public key does not match\n" );
+        return false;
+    }
+
+    /* The signature uses q = 3 in the top tree and q = 4 in the bottom */
+    /* tree, that is, sequence number 3*32 + 4 = 100.  The first 8 bytes */
+    /* of the private key are the sequence number (big-endian) */
+    memset( private_key, 0, 8 );
+    private_key[7] = 3*32 + 4;
+
+    struct hss_working_key *w = hss_load_private_key( NULL, private_key,
+                                       0, NULL, 0, 0 );
+    if (!w) return false;
+    unsigned char *gen_signature = malloc( len_signature );
+    bool success = gen_signature &&
+         hss_generate_signature( w, NULL, private_key,
+                       message, len_message,
+                       gen_signature, len_signature, 0 ) &&
+         0 == memcmp( gen_signature, signature, len_signature );
+    if (!success) {
+        printf( "Test case 2: generated signature does not match\n" );
+    }
+    free( gen_signature );
+    hss_free_working_key( w );
+    return success;
+}
+#endif
 
 bool test_testvector_2(void) {
     /* This is test case 2 */
@@ -909,8 +985,15 @@ bool test_testvector_2(void) {
                           public_key,
                           message, sizeof message,
                           signature, sizeof signature, 0);
+    if (!verified) return false;
 
-    return verified;
+#if SECRET_METHOD == 2
+    return test_testvector_2_regen( public_key, sizeof public_key,
+                                    message, sizeof message,
+                                    signature, sizeof signature );
+#else
+    return true;
+#endif
 }
 
 
