@@ -155,8 +155,7 @@ void SHA256_Final (unsigned char *digest, SHA256_CTX *ctx)
     unsigned int i;
     unsigned char finalcount[SHA256_FINALCOUNT_SIZE];
 
-    put_bigendian( &finalcount[0], ctx->N >> 32,        4 );
-    put_bigendian( &finalcount[4], ctx->N & 0xffffffff, 4 );
+    put_bigendian( &finalcount[0], ctx->N, 8 );
 
     SHA256_Update(ctx, "\200", 1);
 
