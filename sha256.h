@@ -15,10 +15,12 @@
 
 #else
 
+#include <stddef.h>
+
 /* SHA256 context. */
 typedef struct {
   unsigned long int h[8];            /* state; this is in the CPU native format */
-  unsigned long Nl, Nh;              /* number of bits processed so far */
+  unsigned long long N;              /* number of bits processed so far */
   unsigned num;                      /* number of bytes within the below */
                                      /* buffer */
   unsigned char data[64];            /* input buffer.  This is in byte vector format */
@@ -27,8 +29,8 @@ typedef struct {
 void SHA256_Init(SHA256_CTX *);  /* context */
 
 void SHA256_Update(SHA256_CTX *, /* context */
-                  const void *, /* input block */ 
-                  unsigned int);/* length of input block */
+                  const void *,  /* input block */ 
+                  size_t);       /* length of input block */
 
 void SHA256_Final(unsigned char *,
                  SHA256_CTX *);

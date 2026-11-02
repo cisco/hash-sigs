@@ -113,8 +113,7 @@ static void sha256_compress (SHA256_CTX * ctx, const void *buf)
 
 void SHA256_Init (SHA256_CTX *ctx)
 {
-    ctx->Nl = 0;
-    ctx->Nh = 0;
+    ctx->N = 0;
     ctx->num = 0;
     ctx->h[0] = 0x6A09E667UL;
     ctx->h[1] = 0xBB67AE85UL;
@@ -126,13 +125,9 @@ void SHA256_Init (SHA256_CTX *ctx)
     ctx->h[7] = 0x5BE0CD19UL;
 }
 
-void SHA256_Update (SHA256_CTX *ctx, const void *src, unsigned int count)
+void SHA256_Update (SHA256_CTX *ctx, const void *src, size_t count)
 {
-    unsigned new_count = (ctx->Nl + (count << 3)) & 0xffffffff;
-    if (new_count < ctx->Nl) {
-        ctx->Nh += 1;
-    }
-    ctx->Nl = new_count;
+    ctx->N += ((unsigned long long)count) << 3;
 
     while (count) {
         unsigned int this_step = 64 - ctx->num;
@@ -160,8 +155,8 @@ void SHA256_Final (unsigned char *digest, SHA256_CTX *ctx)
     unsigned int i;
     unsigned char finalcount[SHA256_FINALCOUNT_SIZE];
 
-    put_bigendian( &finalcount[0], ctx->Nh, 4 );
-    put_bigendian( &finalcount[4], ctx->Nl, 4 );
+    put_bigendian( &finalcount[0], ctx->N >> 32,        4 );
+    put_bigendian( &finalcount[4], ctx->N & 0xffffffff, 4 );
 
     SHA256_Update(ctx, "\200", 1);
 
