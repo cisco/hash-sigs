@@ -361,6 +361,13 @@ bool hss_generate_working_key(
     struct expanded_aux_data *expanded_aux, temp_aux;
     expanded_aux = hss_expand_aux_data( aux_data, len_aux_data, &temp_aux,
                                         w->tree[0]->hash_size, w );
+    if (!expanded_aux && aux_data && len_aux_data >= 4 &&
+                         aux_data[AUX_DATA_MARKER] != NO_AUX_DATA) {
+        /* Aux data was supplied but did not validate; report it so the caller
+         * can tell corrupt aux from no aux.  This is advisory: the tree is
+         * regenerated below and the load still succeeds. */
+        info->error_code = hss_error_bad_aux;
+    }
 
     /*
      * Now, build all the subtrees within the tree

@@ -26,11 +26,7 @@
  * Finally, an HMAC for the entire file (except for the HMAC); the key for the
  * HMAC is derived from the master seed
  */
-#define AUX_DATA_MARKER 0   /* The marker for the aux data; either the aux */
-                            /* level we're saving (4 bytes; first byte */
-                            /* nonezero), or NO_AUX_DATA if we're not */
-                            /* using it */
-#define NO_AUX_DATA  0x00
+/* AUX_DATA_MARKER and NO_AUX_DATA are defined in hss_aux.h */
 #define AUX_DATA_HASHES 4   /* The actual hashes start here */
 
 static void compute_seed_derive( unsigned char *result, unsigned hash,
@@ -129,8 +125,11 @@ struct expanded_aux_data *hss_expand_aux_data( const unsigned char *aux_data,
                    size_t len_aux_data,
                    struct expanded_aux_data *temp, unsigned size_hash,
                    struct hss_working_key *w ) {
-    /* Check if we really have any aux data */
-    if (!aux_data || aux_data[AUX_DATA_MARKER] == NO_AUX_DATA) return 0;
+    /* Check if we really have any aux data.  The length test guards the
+     * 4-byte header read below: a blob shorter than the header cannot hold
+     * aux data, so treat it as none rather than reading past it. */
+    if (!aux_data || len_aux_data < 4 ||
+                     aux_data[AUX_DATA_MARKER] == NO_AUX_DATA) return 0;
 
     const unsigned char *orig_aux_data = aux_data;
     unsigned long aux_level = get_bigendian( aux_data, 4 );
